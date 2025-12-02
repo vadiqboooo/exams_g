@@ -1,169 +1,162 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import axios from 'axios';
 import Modal from '../common/Modal';
 import { getSubjectDisplayName } from '../../utils/helpers';
 import { SUBJECT_TASKS } from '../../services/constants';
 import './GroupExamsModal.css';
 
-const GroupExamsModal = ({ group, allExams, onClose, showNotification }) => {
-  const [groupExams, setGroupExams] = useState([]);
-  const [mainSubject, setMainSubject] = useState(null);
-  const [mainSubjectConfig, setMainSubjectConfig] = useState(null);
+const API_BASE = 'http://127.0.0.1:8000';
 
-  useEffect(() => {
-    if (group && allExams) {
-      // Получаем ID студентов группы
-      const groupStudentIds = group.students?.map(s => s.id) || [];
-      
-      // Фильтруем экзамены студентов группы
-      const filteredExams = allExams.filter(exam => 
-        groupStudentIds.includes(exam.id_student)
-      );
-      
-      setGroupExams(filteredExams);
-      
-      // Определяем основной предмет (используем subject из группы)
-      let mainSubj = group.subject;
-      if (!mainSubj && filteredExams.length > 0) {
-        // Если в группе нет subject, берем самый частый из экзаменов
-        const subjectCounts = {};
-        filteredExams.forEach(exam => {
-          subjectCounts[exam.subject] = (subjectCounts[exam.subject] || 0) + 1;
-        });
-        mainSubj = Object.keys(subjectCounts).sort((a, b) => 
-          subjectCounts[b] - subjectCounts[a]
-        )[0] || null;
-      }
-      
-      setMainSubject(mainSubj);
-      
-      // Получаем конфигурацию для основного предмета
-      if (mainSubj) {
-        setMainSubjectConfig(SUBJECT_TASKS[mainSubj]);
-      }
-    }
+const GroupExamsModal = ({ group, allExams, onClose, showNotification }) => {
+
+  // --------------------------------------------
+  // INITIAL COMPUTATION (NO RE-EXECUTION)
+  // --------------------------------------------
+  const initialExams = useMemo(() => {
+    if (!group) return [];
+    const ids = group.students.map(s => s.id);
+    return allExams.filter(ex => ids.includes(ex.id_student));
   }, [group, allExams]);
 
-  // Получаем экзамен студента по основному предмету
-  const getStudentExam = (studentId) => {
-    return groupExams.find(exam => 
-      exam.id_student === studentId && exam.subject === mainSubject
-    );
+  const initialMainSubject = useMemo(() => {
+    if (!group) return null;
+
+    if (group.subject) return group.subject;
+
+    const map = {};
+    initialExams.forEach(e => {
+      map[e.subject] = (map[e.subject] || 0) + 1;
+    });
+
+    return Object.keys(map).sort((a, b) => map[b] - map[a])[0] || null;
+  }, [group, initialExams]);
+
+  // --------------------------------------------
+  // LOCAL STATE (ONLY UPDATED LOCALLY)
+  // --------------------------------------------
+  const [groupExams, setGroupExams] = useState(initialExams);
+  const [mainSubject] = useState(initialMainSubject);
+  const mainSubjectConfig = useMemo(() => SUBJECT_TASKS[mainSubject] || null, [mainSubject]);
+
+  const tasksCount = mainSubjectConfig?.tasks || 0;
+
+  const getExam = useCallback((studentId) => {
+    return groupExams.find(e => e.id_student === studentId && e.subject === mainSubject) || null;
+  }, [groupExams, mainSubject]);
+
+  // --------------------------------------------
+  // HELPERS
+  // --------------------------------------------
+  const calculatePrimaryScore = (answerString) => {
+    if (!answerString) return 0;
+    return answerString
+      .split(',')
+      .map(a => a.trim())
+      .reduce((sum, val) => sum + (val !== '-' ? Number(val) || 0 : 0), 0);
   };
 
-  // Обработчик изменения ответа на задание
-  const handleTaskChange = async (examId, taskIndex, value) => {
+  // --------------------------------------------
+  // UPDATE ANSWER
+  // --------------------------------------------
+  const handleTaskChange = async (examId, index, value) => {
+    let clean = value.replace(/[^0-9-]/g, '');
+    if (clean === '--') clean = '-';
+
+    const max = mainSubjectConfig?.maxPerTask?.[index] || 1;
+    if (clean !== '-' && Number(clean) > max) clean = String(max);
+
+    const exam = groupExams.find(e => e.id === examId);
+    if (!exam) return;
+
+    const answers = exam.answer ? exam.answer.split(',').map(s => s.trim()) : [];
+    while (answers.length < tasksCount) answers.push('-');
+    answers[index] = clean;
+
     try {
-      // Валидация ввода
-      let validatedValue = value.replace(/[^0-9\-]/g, '');
-      if (validatedValue === '--') validatedValue = '-';
-      
-      const maxScore = mainSubjectConfig?.maxPerTask?.[taskIndex] || 1;
-      if (validatedValue && validatedValue !== '-' && parseInt(validatedValue) > maxScore) {
-        validatedValue = maxScore.toString();
-      }
+      await axios.put(`${API_BASE}/exams/${examId}`, {
+        answer: answers.join(',')
+      });
 
-      // Получаем текущие ответы
-      const exam = groupExams.find(e => e.id === examId);
-      if (!exam) return;
+      setGroupExams(prev =>
+        prev.map(e => e.id === examId ? { ...e, answer: answers.join(',') } : e)
+      );
 
-      const answers = exam.answer ? exam.answer.split(',').map(s => s.trim()) : [];
-      
-      // Обновляем нужный ответ
-      while (answers.length <= taskIndex) {
-        answers.push('-');
-      }
-      answers[taskIndex] = validatedValue;
-
-      // Обновляем на сервере
-      // await axios.put(`${API_BASE}/exams/${examId}`, {
-      //   answer: answers.join(',')
-      // });
-
-      // Обновляем локальное состояние
-      setGroupExams(prev => prev.map(e => 
-        e.id === examId ? { ...e, answer: answers.join(',') } : e
-      ));
-
-      showNotification('Результат сохранён ✓', 'success');
-    } catch (err) {
-      showNotification('Ошибка сохранения ✗', 'error');
+      showNotification('Сохранено ✓', 'success');
+    } catch (e) {
+      console.error(e);
+      showNotification('Ошибка сохранения', 'error');
     }
   };
 
-  // Обработчик изменения комментария
+  // --------------------------------------------
+  // UPDATE COMMENT
+  // --------------------------------------------
   const handleCommentChange = async (examId, comment) => {
     try {
-      // await axios.put(`${API_BASE}/exams/${examId}`, {
-      //   comment: comment.trim() || null
-      // });
+      await axios.put(`${API_BASE}/exams/${examId}`, {
+        comment: comment.trim() || null
+      });
 
-      setGroupExams(prev => prev.map(e => 
-        e.id === examId ? { ...e, comment } : e
-      ));
+      setGroupExams(prev =>
+        prev.map(e => e.id === examId ? { ...e, comment } : e)
+      );
 
       showNotification('Комментарий сохранён ✓', 'success');
-    } catch (err) {
-      showNotification('Ошибка сохранения комментария ✗', 'error');
+    } catch (e) {
+      console.error(e);
+      showNotification('Ошибка', 'error');
     }
   };
 
-  // Добавление экзамена для студента
+  // --------------------------------------------
+  // ADD EXAM
+  // --------------------------------------------
   const handleAddExam = async (studentId) => {
+    const examData = {
+      name: `Экзамен ${new Date().toLocaleDateString('ru-RU')}`,
+      id_student: studentId,
+      subject: mainSubject,
+      answer: tasksCount ? Array(tasksCount).fill('-').join(',') : null,
+      comment: null
+    };
+
     try {
-      const student = group.students.find(s => s.id === studentId);
-      if (!student) return;
+      const res = await axios.post(`${API_BASE}/exams/`, examData);
 
-      const examData = {
-        name: `Экзамен ${new Date().toLocaleDateString('ru-RU')}`,
-        id_student: studentId,
-        subject: mainSubject,
-        answer: mainSubjectConfig?.tasks ? 
-          Array(mainSubjectConfig.tasks).fill('-').join(',') : null,
-        comment: null
-      };
+      setGroupExams(prev => [...prev, res.data]);
 
-      // const response = await axios.post(`${API_BASE}/exams/`, examData);
-      // const newExam = response.data;
-
-      // Временная заглушка - создаем локальный экзамен
-      const newExam = {
-        ...examData,
-        id: Date.now() // временный ID
-      };
-
-      setGroupExams(prev => [...prev, newExam]);
-      showNotification(`Экзамен добавлен для ${student.fio.split(' ')[0]} ✓`, 'success');
-    } catch (err) {
-      showNotification('Ошибка добавления экзамена ✗', 'error');
+      showNotification('Экзамен добавлен ✓', 'success');
+    } catch (e) {
+      console.error(e);
+      showNotification('Ошибка добавления', 'error');
     }
   };
 
-  // Удаление экзамена
+  // --------------------------------------------
+  // DELETE EXAM
+  // --------------------------------------------
   const handleDeleteExam = async (examId) => {
-    if (!window.confirm('Удалить этот экзамен?')) return;
+    if (!window.confirm('Удалить экзамен?')) return;
 
     try {
-      // await axios.delete(`${API_BASE}/exams/${examId}`);
+      await axios.delete(`${API_BASE}/exams/${examId}`);
+
       setGroupExams(prev => prev.filter(e => e.id !== examId));
-      showNotification('Экзамен удалён', 'success');
-    } catch (err) {
+
+      showNotification('Удалён ✓', 'success');
+    } catch (e) {
+      console.error(e);
       showNotification('Ошибка удаления', 'error');
     }
   };
 
-  // Расчет первичного балла
-  const calculatePrimaryScore = (answer) => {
-    if (!answer) return 0;
-    const answers = answer.split(',').map(s => s.trim());
-    return answers.reduce((sum, ans) => 
-      sum + (ans !== '-' ? (parseInt(ans) || 0) : 0), 0
-    );
-  };
-
+  // --------------------------------------------
+  // RENDER
+  // --------------------------------------------
   if (!group) return null;
 
   return (
-    <Modal onClose={onClose} size="xl" className="group-exams-modal-container">
+    <Modal onClose={onClose} className="group-exams-modal-container">
       <div className="group-exams-modal">
         <div className="group-modal-header">
           <div>
@@ -173,131 +166,113 @@ const GroupExamsModal = ({ group, allExams, onClose, showNotification }) => {
           <button onClick={onClose} className="close-btn">×</button>
         </div>
 
-        <div className="group-modal-content">
-          {!mainSubject ? (
-            <div className="group-no-exams-state">
-              <div className="group-no-exams-icon">📝</div>
-              <h3>Нет основного предмета</h3>
-              <p>Добавьте предмет для этой группы в настройках</p>
+        {!mainSubject ? (
+          <div className="group-no-exams-state">
+            <div className="group-no-exams-icon">📝</div>
+            <h3>Нет основного предмета</h3>
+            <p>Добавьте предмет в настройках</p>
+          </div>
+        ) : (
+          <>
+            <div className="subject-main-header">
+              <h3>
+                📖 {getSubjectDisplayName(mainSubject)}
+                {tasksCount > 0 && (
+                  <span className="tasks-count">({tasksCount} заданий)</span>
+                )}
+              </h3>
             </div>
-          ) : (
-            <>
-              {/* Заголовок предмета */}
-              <div className="subject-main-header">
-                <h3>
-                  📖 {getSubjectDisplayName(mainSubject)}
-                  {mainSubjectConfig?.tasks && (
-                    <span className="tasks-count">
-                      ({mainSubjectConfig.tasks} заданий)
-                    </span>
-                  )}
-                </h3>
-              </div>
 
-              {/* Карточки студентов */}
-              <div className="students-exams-container">
-                {group.students.map(student => {
-                  const exam = getStudentExam(student.id);
-                  const hasExam = !!exam;
-                  const tasksCount = mainSubjectConfig?.tasks || 0;
-                  const primaryScore = hasExam && exam.answer ? 
-                    calculatePrimaryScore(exam.answer) : 0;
+            <div className="students-exams-container">
+              {group.students.map(student => {
+                const exam = getExam(student.id);
+                const hasExam = !!exam;
 
-                  return (
-                    <div key={student.id} className="student-exam-card">
-                      {/* Заголовок карточки студента */}
-                      <div className="student-exam-header">
-                        <div className="student-info">
-                          <strong>{student.fio}</strong>
-                          {student.phone && (
-                            <span className="student-phone">📱 {student.phone}</span>
-                          )}
-                        </div>
-                        
-                        <div className="student-exam-actions">
-                          {hasExam ? (
-                            <>
-                              <span className="primary-score">
-                                Первичный балл: <strong>{primaryScore}</strong>
-                              </span>
-                              <button
-                                onClick={() => handleDeleteExam(exam.id)}
-                                className="delete-exam-btn"
-                                title="Удалить экзамен"
-                              >
-                                🗑️ Удалить
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              onClick={() => handleAddExam(student.id)}
-                              className="add-exam-btn"
-                            >
-                              ➕ Добавить экзамен
-                            </button>
-                          )}
-                        </div>
+                const answers = exam?.answer?.split(',').map(s => s.trim()) || [];
+                const primary = hasExam ? calculatePrimaryScore(exam.answer) : 0;
+
+                return (
+                  <div key={student.id} className="student-exam-card">
+
+                    <div className="student-exam-header">
+                      <div className="student-info">
+                        <strong>{student.fio}</strong>
+                        {student.phone && (
+                          <span className="student-phone">📱 {student.phone}</span>
+                        )}
                       </div>
 
-                      {/* Содержимое карточки */}
-                      <div className="student-exam-content">
+                      <div className="student-exam-actions">
                         {hasExam ? (
                           <>
-                            {/* Таблица заданий */}
-                            {tasksCount > 0 && (
-                              <div className="exam-tasks-section">
-                                <div className="tasks-label">Ответы по заданиям:</div>
-                                <div className="tasks-grid">
-                                  {Array.from({ length: tasksCount }).map((_, index) => {
-                                    const answers = exam.answer ? 
-                                      exam.answer.split(',').map(s => s.trim()) : [];
-                                    const answer = answers[index] || '-';
-                                    const maxScore = mainSubjectConfig?.maxPerTask?.[index] || 1;
-                                    
-                                    return (
-                                      <div key={index} className="task-item">
-                                        <div className="task-number">{index + 1}</div>
-                                        <input
-                                          type="text"
-                                          maxLength="2"
-                                          value={answer}
-                                          onChange={(e) => handleTaskChange(exam.id, index, e.target.value)}
-                                          className="task-input"
-                                        />
-                                        <div className="task-max">max: {maxScore}</div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Комментарий */}
-                            <div className="exam-comment-section">
-                              <div className="comment-label">💬 Комментарий:</div>
-                              <textarea
-                                value={exam.comment || ''}
-                                onChange={(e) => handleCommentChange(exam.id, e.target.value)}
-                                className="comment-textarea"
-                                placeholder="Добавить комментарий к экзамену..."
-                                rows="3"
-                              />
-                            </div>
+                            <span className="primary-score">
+                              Первичный балл: <strong>{primary}</strong>
+                            </span>
+                            <button
+                              onClick={() => handleDeleteExam(exam.id)}
+                              className="delete-exam-btn"
+                            >
+                              🗑️ Удалить
+                            </button>
                           </>
                         ) : (
-                          <div className="no-exam-content">
-                            <div className="no-exam-icon">📝</div>
-                            <p>У студента нет экзамена по этому предмету</p>
-                          </div>
+                          <button
+                            onClick={() => handleAddExam(student.id)}
+                            className="add-exam-btn"
+                          >
+                            ➕ Добавить экзамен
+                          </button>
                         )}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
+
+                    {hasExam ? (
+                      <div className="student-exam-content">
+                        {tasksCount > 0 && (
+                          <div className="exam-tasks-section">
+                            <div className="tasks-label">Ответы по заданиям:</div>
+
+                            <div className="tasks-grid">
+                              {Array.from({ length: tasksCount }).map((_, i) => (
+                                <div key={i} className="task-item">
+                                  <div className="task-number">{i + 1}</div>
+                                  <input
+                                    value={answers[i] || '-'}
+                                    maxLength={2}
+                                    onChange={(e) => handleTaskChange(exam.id, i, e.target.value)}
+                                    className="task-input"
+                                  />
+                                  <div className="task-max">
+                                    max: {mainSubjectConfig?.maxPerTask?.[i] || 1}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="exam-comment-section">
+                          <div className="comment-label">💬 Комментарий:</div>
+                          <textarea
+                            value={exam.comment || ''}
+                            onChange={(e) => handleCommentChange(exam.id, e.target.value)}
+                            className="comment-textarea"
+                            rows="3"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="no-exam-content">
+                        <div className="no-exam-icon">📝</div>
+                        <p>У студента нет экзамена</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   );

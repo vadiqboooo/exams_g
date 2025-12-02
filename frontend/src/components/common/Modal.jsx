@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 
-const Modal = ({ children, onClose, size = 'md' }) => {
+const Modal = ({ children, onClose, size = 'md', className = '' }) => {
   useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === 'Escape') onClose();
@@ -21,9 +21,16 @@ const Modal = ({ children, onClose, size = 'md' }) => {
     xl: 'max-w-6xl'
   };
 
+  const modalClass = className 
+    ? className 
+    : `modal-content ${sizeClasses[size]}`;
+
   return (
     <div className="modal-backdrop" onClick={handleBackdropClick}>
-      <div className={`modal-content ${sizeClasses[size]}`}>
+      <div 
+        className={modalClass}
+        onClick={(e) => e.stopPropagation()}  
+      >
         {children}
       </div>
     </div>

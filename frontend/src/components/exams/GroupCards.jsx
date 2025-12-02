@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useGroups } from '../../hooks/useGroups';
 import { useExams } from '../../hooks/useExams';
 import GroupExamsModal from './GroupExamsModal';
@@ -30,17 +30,25 @@ const GroupCards = ({ showNotification }) => {
     fetchData();
   }, [loadGroups, loadExams, showNotification]);
 
-  const handleGroupClick = (group) => {
+  const handleGroupClick = useCallback((group) => {
     setSelectedGroup(group);
-  };
+  }, []);
 
-  const handleCloseModal = () => {
+  const handleCloseModal = useCallback(async () => {
     setSelectedGroup(null);
-  };
+    // Перезагружаем экзамены после закрытия
+    // await loadExams();
+  }, [loadExams]);
 
-  // Убедимся, что groups - это массив
-  const groupsArray = Array.isArray(groups) ? groups : [];
-  const examsArray = Array.isArray(exams) ? exams : [];
+  const handleCloseExamForm = useCallback(() => {
+    setShowExamForm(false);
+    // Перезагружаем экзамены после добавления
+    // loadExams();
+  }, [loadExams]);
+
+  // Мемоизируем массивы для предотвращения лишних перерисовок
+  const groupsArray = useMemo(() => Array.isArray(groups) ? groups : [], [groups]);
+  const examsArray = useMemo(() => Array.isArray(exams) ? exams : [], [exams]);
 
   if (isLoading) {
     return (
@@ -71,7 +79,7 @@ const GroupCards = ({ showNotification }) => {
 
         {showExamForm && (
           <ExamForm
-            onClose={() => setShowExamForm(false)}
+            onClose={handleCloseExamForm}
             showNotification={showNotification}
           />
         )}
@@ -156,7 +164,7 @@ const GroupCards = ({ showNotification }) => {
       {selectedGroup && (
         <GroupExamsModal 
           group={selectedGroup}
-          allExams={examsArray} // Передаем загруженные экзамены
+          allExams={examsArray}
           onClose={handleCloseModal}
           showNotification={showNotification}
         />
@@ -164,7 +172,7 @@ const GroupCards = ({ showNotification }) => {
 
       {showExamForm && (
         <ExamForm
-          onClose={() => setShowExamForm(false)}
+          onClose={handleCloseExamForm}
           showNotification={showNotification}
         />
       )}
