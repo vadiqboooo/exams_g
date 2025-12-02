@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useGroups } from '../../hooks/useGroups';
 import { useExams } from '../../hooks/useExams';
+import GroupExamsListModal from './GroupExamsListModal';
 import GroupExamsModal from './GroupExamsModal';
 import ExamForm from './ExamForm';
 import { getSubjectDisplayName, formatSchedule, getDeclension } from '../../utils/helpers';
@@ -9,9 +10,12 @@ const GroupCards = ({ showNotification }) => {
   const { groups, loadGroups } = useGroups();
   const { exams, loadExams } = useExams();
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [selectedExamTitle, setSelectedExamTitle] = useState(null);
   const [showExamForm, setShowExamForm] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [shouldRefreshExams, setShouldRefreshExams] = useState(false);
 
+  // Загрузка данных
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
@@ -30,25 +34,51 @@ const GroupCards = ({ showNotification }) => {
     fetchData();
   }, [loadGroups, loadExams, showNotification]);
 
+  // Перезагрузка экзаменов при необходимости
+  useEffect(() => {
+    if (shouldRefreshExams) {
+      loadExams();
+      setShouldRefreshExams(false);
+    }
+  }, [shouldRefreshExams, loadExams]);
+
+  // Обработчики для двухуровневой навигации
   const handleGroupClick = useCallback((group) => {
     setSelectedGroup(group);
+    setSelectedExamTitle(null); // Сбрасываем выбранный экзамен
   }, []);
 
-  const handleCloseModal = useCallback(async () => {
+  const handleSelectExam = useCallback((examTitle) => {
+    setSelectedExamTitle(examTitle);
+  }, []);
+
+  const handleBackToList = useCallback(() => {
+    setSelectedExamTitle(null);
+  }, []);
+
+  const handleCloseModal = useCallback((needsRefresh = false) => {
     setSelectedGroup(null);
-    // Перезагружаем экзамены после закрытия
-    // await loadExams();
-  }, [loadExams]);
+    setSelectedExamTitle(null);
+    if (needsRefresh) {
+      setShouldRefreshExams(true);
+    }
+  }, []);
 
-  const handleCloseExamForm = useCallback(() => {
+  const handleCloseExamForm = useCallback((needsRefresh = false) => {
     setShowExamForm(false);
-    // Перезагружаем экзамены после добавления
-    // loadExams();
-  }, [loadExams]);
+    if (needsRefresh) {
+      setShouldRefreshExams(true);
+    }
+  }, []);
 
-  // Мемоизируем массивы для предотвращения лишних перерисовок
+  // Мемоизируем массивы
   const groupsArray = useMemo(() => Array.isArray(groups) ? groups : [], [groups]);
   const examsArray = useMemo(() => Array.isArray(exams) ? exams : [], [exams]);
+
+  // Стабильная функция уведомлений
+  const stableShowNotification = useCallback((message, type) => {
+    showNotification(message, type);
+  }, [showNotification]);
 
   if (isLoading) {
     return (
@@ -80,7 +110,7 @@ const GroupCards = ({ showNotification }) => {
         {showExamForm && (
           <ExamForm
             onClose={handleCloseExamForm}
-            showNotification={showNotification}
+            showNotification={stableShowNotification}
           />
         )}
       </div>
@@ -105,6 +135,9 @@ const GroupCards = ({ showNotification }) => {
           const groupStudentIds = group.students?.map(s => s.id) || [];
           
           const groupExams = examsArray.filter(exam => groupStudentIds.includes(exam.id_student));
+          
+          // Подсчитываем уникальные названия экзаменов
+          const examTitles = [...new Set(groupExams.map(exam => exam.name || 'Без названия'))];
           
           let mainSubject = group.subject || 'Не указан';
           if (!group.subject) {
@@ -153,7 +186,7 @@ const GroupCards = ({ showNotification }) => {
               </div>
               
               <div className="group-footer">
-                <span>📊 Экзаменов: <strong>{mainSubjectExamsCount}</strong></span>
+                <span>📊 Экзаменов: <strong>{examTitles.length}</strong> ({mainSubjectExamsCount} работ)</span>
                 <span className="open-arrow">Открыть →</span>
               </div>
             </div>
@@ -161,19 +194,34 @@ const GroupCards = ({ showNotification }) => {
         })}
       </div>
 
-      {selectedGroup && (
-        <GroupExamsModal 
+      {/* Модальное окно со списком экзаменов */}
+      {selectedGroup && !selectedExamTitle && (
+        <GroupExamsListModal
           group={selectedGroup}
           allExams={examsArray}
           onClose={handleCloseModal}
-          showNotification={showNotification}
+          onSelectExam={handleSelectExam}
+          // showNotification={stableShowNotification}
         />
       )}
 
+      {/* Модальное окно с деталями конкретного экзамена */}
+      {selectedGroup && selectedExamTitle && (
+        <GroupExamsModal
+          group={selectedGroup}
+          allExams={examsArray}
+          examTitle={selectedExamTitle}
+          onClose={handleCloseModal}
+          onBack={handleBackToList}
+          // showNotification={stableShowNotification}
+        />
+      )}
+
+      {/* Форма добавления экзамена */}
       {showExamForm && (
         <ExamForm
           onClose={handleCloseExamForm}
-          showNotification={showNotification}
+          showNotification={stableShowNotification}
         />
       )}
     </div>

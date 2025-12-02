@@ -1,0 +1,694 @@
+/* GroupExamsDetailsModal.css - Стили для деталей конкретного экзамена */
+
+/* Основной контейнер */
+.group-exams-details-modal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: white;
+  border-radius: 12px;
+}
+
+/* Заголовок экзамена */
+.exam-title-header-large {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 24px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.exam-icon-large {
+  font-size: 28px;
+}
+
+.exam-header-info {
+  display: flex;
+  gap: 20px;
+  margin-top: 8px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.group-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Статистика экзамена */
+.exam-stats-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 15px;
+  margin: 25px 0;
+  padding: 20px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.exam-stat-card {
+  text-align: center;
+  padding: 15px;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s;
+}
+
+.exam-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.stat-label {
+  font-size: 13px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+/* Заголовок предмета с иконкой */
+.subject-main-header-detailed {
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #3498db;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.subject-main-header-detailed h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #2c3e50;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.subject-icon-large {
+  font-size: 22px;
+}
+
+.tasks-count-detailed {
+  color: #7f8c8d;
+  font-size: 16px;
+  font-weight: normal;
+}
+
+.subject-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.total-exams-count {
+  background: #f3f4f6;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+/* Предупреждение о отсутствии предмета */
+.no-subject-warning {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 20px;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  margin: 20px 0;
+}
+
+.warning-icon {
+  font-size: 28px;
+}
+
+.no-subject-warning h4 {
+  margin: 0 0 6px 0;
+  color: #92400e;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.no-subject-warning p {
+  margin: 0;
+  color: #b45309;
+  font-size: 14px;
+}
+
+/* Контейнер для карточек студентов */
+.students-exams-container-details {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Карточка студента с экзаменом - детальная */
+.student-exam-card-detailed {
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.student-exam-card-detailed:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  border-color: #3498db;
+}
+
+/* Заголовок карточки студента - детальная */
+.student-exam-header-detailed {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  padding: 20px 25px;
+  border-bottom: 1px solid #dee2e6;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+.student-info-detailed {
+  flex: 1;
+  min-width: 0;
+}
+
+.student-name-detailed {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.student-info-detailed strong {
+  color: #2c3e50;
+  font-size: 18px;
+  font-weight: 600;
+  display: block;
+  word-break: break-word;
+}
+
+.student-phone-detailed, 
+.student-email-detailed {
+  color: #6c757d;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.student-exam-actions-detailed {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+/* Информация об оценке */
+.exam-score-info-detailed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-right: 15px;
+}
+
+.primary-score-label-detailed {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.primary-score-value-detailed {
+  font-size: 22px;
+  color: #10b981;
+  font-weight: 600;
+}
+
+.score-max-detailed {
+  font-size: 16px;
+  color: #9ca3af;
+  margin-left: 4px;
+  font-weight: 500;
+}
+
+/* Кнопки действий - детальная */
+.delete-exam-btn-detailed,
+.add-exam-btn-detailed {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.delete-exam-btn-detailed {
+  background: #dc3545;
+  color: white;
+}
+
+.delete-exam-btn-detailed:hover:not(:disabled) {
+  background: #c82333;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(220, 53, 69, 0.2);
+}
+
+.add-exam-btn-detailed {
+  background: #28a745;
+  color: white;
+}
+
+.add-exam-btn-detailed:hover:not(:disabled) {
+  background: #218838;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(40, 167, 69, 0.2);
+}
+
+/* Содержимое карточки студента - детальная */
+.student-exam-content-detailed {
+  padding: 25px;
+}
+
+/* Раздел с заданиями - детальная */
+.exam-tasks-section-detailed {
+  margin-bottom: 25px;
+}
+
+.tasks-header-detailed {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tasks-label-detailed {
+  font-size: 16px;
+  color: #495057;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tasks-total-detailed {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+/* Сетка заданий - детальная */
+.tasks-grid-detailed {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 15px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  border: 1px solid #e9ecef;
+}
+
+.task-item-detailed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 15px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s;
+}
+
+.task-item-detailed:hover {
+  border-color: #3498db;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.1);
+}
+
+.task-header-detailed {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.task-number-detailed {
+  font-weight: 700;
+  color: #374151;
+  font-size: 15px;
+  background: #f3f4f6;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.task-max-label-detailed {
+  font-size: 12px;
+  color: #9ca3af;
+  background: #f8fafc;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+}
+
+.task-input-detailed {
+  width: 70px;
+  height: 50px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 18px;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  padding: 0;
+  transition: all 0.2s;
+  background: white;
+}
+
+.task-input-detailed:focus {
+  border-color: #3498db;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.task-score-detailed {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+/* Итоговая статистика заданий */
+.tasks-summary-detailed {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  margin-top: 15px;
+}
+
+.total-score-detailed {
+  font-size: 17px;
+  color: #374151;
+  font-weight: 600;
+}
+
+.total-score-detailed strong {
+  color: #10b981;
+  font-size: 22px;
+}
+
+.score-percentage-detailed {
+  background: #3b82f6;
+  color: white;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Раздел комментария - детальная */
+.exam-comment-section-detailed {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid #dee2e6;
+  margin-top: 20px;
+}
+
+.comment-header-detailed {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.comment-label-detailed {
+  font-size: 15px;
+  color: #495057;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.comment-icon-detailed {
+  font-size: 18px;
+}
+
+.comment-length-detailed {
+  font-size: 13px;
+  color: #9ca3af;
+  background: #f3f4f6;
+  padding: 4px 10px;
+  border-radius: 10px;
+}
+
+.comment-textarea-detailed {
+  width: 100%;
+  min-height: 100px;
+  padding: 15px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  font-size: 14px;
+  resize: vertical;
+  font-family: inherit;
+  transition: all 0.2s;
+  line-height: 1.5;
+  box-sizing: border-box;
+  background: white;
+}
+
+.comment-textarea-detailed:focus {
+  border-color: #3498db;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.comment-actions-detailed {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.comment-hint-detailed {
+  font-size: 12px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Мета-информация об экзамене */
+.exam-meta-info-detailed {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+/* Состояние без экзамена - детальная */
+.no-exam-content-detailed {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 30px;
+  background: #f9fafb;
+  border-radius: 10px;
+  border: 2px dashed #d1d5db;
+}
+
+.no-exam-icon-detailed {
+  font-size: 40px;
+  opacity: 0.5;
+}
+
+.no-exam-text-detailed {
+  flex: 1;
+}
+
+.no-exam-text-detailed h4 {
+  margin: 0 0 8px 0;
+  color: #374151;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.no-exam-text-detailed p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 15px;
+}
+
+.add-exam-btn-small-detailed {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.add-exam-btn-small-detailed:hover {
+  background: #0da271;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(16, 185, 129, 0.2);
+}
+
+/* Состояние без студентов */
+.no-students-state-detailed {
+  text-align: center;
+  padding: 60px 20px;
+  color: #6b7280;
+}
+
+.no-students-icon-detailed {
+  font-size: 48px;
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+
+.no-students-state-detailed h3 {
+  margin: 0 0 10px 0;
+  color: #374151;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.no-students-state-detailed p {
+  margin: 0;
+  font-size: 15px;
+}
+
+/* Подвал модального окна - детальная */
+.exam-modal-footer-detailed {
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 2px solid #f3f4f6;
+}
+
+.footer-actions-detailed {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.footer-info-detailed {
+  font-size: 13px;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.last-updated-detailed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Адаптивность - детальная */
+@media (max-width: 768px) {
+  .exam-stats-container {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    padding: 15px;
+  }
+  
+  .stat-value {
+    font-size: 24px;
+  }
+  
+  .tasks-grid-detailed {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 15px;
+  }
+  
+  .task-input-detailed {
+    width: 60px;
+    height: 45px;
+    font-size: 16px;
+  }
+  
+  .student-exam-header-detailed {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+    padding: 20px;
+  }
+  
+  .student-exam-actions-detailed {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  
+  .delete-exam-btn-detailed,
+  .add-exam-btn-detailed {
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .exam-stats-container {
+    grid-template-columns: 1fr;
+  }
+  
+  .tasks-grid-detailed {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  .subject-main-header-detailed h3 {
+    font-size: 18px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+  
+  .no-exam-content-detailed {
+    flex-direction: column;
+    text-align: center;
+    gap: 15px;
+  }
+}

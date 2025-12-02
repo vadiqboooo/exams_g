@@ -1,4 +1,4 @@
-/* GroupExamsModal.css */
+/* GroupExamsModal.css - ТОЛЬКО для старого GroupExamsModal */
 
 /* Контейнер модального окна - максимальная специфичность */
 .modal-backdrop .group-exams-modal-container {
@@ -9,7 +9,6 @@
   background: white;
   border-radius: 12px;
   overflow-y: auto;
-  /* animation: modalSlideIn 0.3s ease-out; */
   display: flex;
   flex-direction: column;
 }
