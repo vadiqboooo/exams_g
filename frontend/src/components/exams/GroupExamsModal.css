@@ -252,7 +252,7 @@
 
 /* Раздел с заданиями */
 .exam-tasks-section {
-  margin-bottom: 25px;
+  /* margin-bottom: 25px; */
 }
 
 .tasks-label {
@@ -269,7 +269,6 @@
 .tasks-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
-  gap: 20px;
   padding: 20px;
   background: #f8f9fa;
   border-radius: 10px;
@@ -281,6 +280,7 @@
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  margin-bottom: 10px;
 }
 
 .task-number {
@@ -330,7 +330,6 @@
 /* Раздел комментария */
 .exam-comment-section {
   background: #f8f9fa;
-  padding: 20px;
   border-radius: 10px;
   border: 1px solid #dee2e6;
 }

@@ -1,31 +1,42 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import axios from 'axios';
 import Modal from '../common/Modal';
 import { getSubjectDisplayName } from '../../utils/helpers';
 import { SUBJECT_TASKS } from '../../services/constants';
 import './GroupExamsModal.css';
-import './GroupExamsDetailsModal.css'; // Добавьте эту строку
+import './GroupExamsDetailsModal.css';
 
 const API_BASE = 'http://127.0.0.1:8000';
 
 const GroupExamsModal = ({ 
   group, 
   allExams, 
-  examTitle, // Название экзамена
+  examTitle,
   onClose, 
-  onBack, // Функция для возврата к списку экзаменов
-  showNotification 
+  onBack,
+  onDataChanged // Новый пропс для уведомления об изменениях
 }) => {
+  // Локальное состояние для экзаменов
+  const [localExams, setLocalExams] = useState(allExams);
+  // Флаг для отслеживания изменений
+  const [hasChanges, setHasChanges] = useState(false);
+  
+  // Обновляем локальное состояние при изменении пропса
+  useEffect(() => {
+    setLocalExams(allExams);
+    setHasChanges(false); // Сбрасываем флаг изменений при получении новых данных
+  }, [allExams]);
+
   // Фильтруем экзамены по названию для выбранной группы
   const filteredExams = useMemo(() => {
-    if (!group || !allExams || !examTitle) return [];
+    if (!group || !localExams || !examTitle) return [];
     
     const groupStudentIds = group.students?.map(s => s.id) || [];
-    return allExams.filter(exam => 
+    return localExams.filter(exam => 
       groupStudentIds.includes(exam.id_student) && 
       (exam.name === examTitle || (!exam.name && examTitle === 'Без названия'))
     );
-  }, [group, allExams, examTitle]);
+  }, [group, localExams, examTitle]);
 
   // Определяем основной предмет по отфильтрованным экзаменам
   const mainSubject = useMemo(() => {
@@ -67,6 +78,35 @@ const GroupExamsModal = ({
       .reduce((sum, val) => sum + (val !== '-' ? Number(val) || 0 : 0), 0);
   };
 
+  // Функция обновления экзамена в локальном состоянии
+  const updateExamInState = (examId, updates) => {
+    setLocalExams(prev => prev.map(exam => 
+      exam.id === examId ? { ...exam, ...updates } : exam
+    ));
+    setHasChanges(true); // Отмечаем, что были изменения
+  };
+
+  // Функция добавления экзамена в локальное состояние
+  const addExamToState = (newExam) => {
+    setLocalExams(prev => [...prev, newExam]);
+    setHasChanges(true); // Отмечаем, что были изменения
+  };
+
+  // Функция удаления экзамена из локального состояния
+  const removeExamFromState = (examId) => {
+    setLocalExams(prev => prev.filter(exam => exam.id !== examId));
+    setHasChanges(true); // Отмечаем, что были изменения
+  };
+
+  // Обработка закрытия окна с проверкой изменений
+  const handleClose = () => {
+    if (hasChanges && onDataChanged) {
+      // Уведомляем родителя о том, что данные изменились
+      onDataChanged();
+    }
+    onClose(false);
+  };
+
   // Обработка изменения ответа на задание
   const handleTaskChange = async (examId, index, value) => {
     let clean = value.replace(/[^0-9-]/g, '');
@@ -81,45 +121,52 @@ const GroupExamsModal = ({
     const answers = exam.answer ? exam.answer.split(',').map(s => s.trim()) : [];
     while (answers.length < tasksCount) answers.push('-');
     answers[index] = clean;
+    const newAnswer = answers.join(',');
 
     try {
-      await axios.put(`${API_BASE}/exams/${examId}`, {
-        answer: answers.join(',')
-      });
-
-      showNotification('Сохранено ✓', 'success');
+      // Оптимистичное обновление UI
+      updateExamInState(examId, { answer: newAnswer });
       
-      // После сохранения нужно обновить данные
-      onClose(true); // Передаем флаг обновления
+      await axios.put(`${API_BASE}/exams/${examId}`, {
+        answer: newAnswer
+      });
+      
     } catch (e) {
       console.error(e);
-      showNotification('Ошибка сохранения', 'error');
+      // Откат при ошибке
+      updateExamInState(examId, { answer: exam.answer });
     }
   };
 
   // Обработка изменения комментария
   const handleCommentChange = async (examId, comment) => {
+    const exam = filteredExams.find(e => e.id === examId);
+    if (!exam) return;
+    
+    // Сохраняем исходный комментарий для отката
+    const previousComment = exam.comment;
+    
     try {
-      await axios.put(`${API_BASE}/exams/${examId}`, {
-        comment: comment.trim() || null
-      });
-
-      showNotification('Комментарий сохранён ✓', 'success');
+      // Оптимистичное обновление
+      updateExamInState(examId, { comment: comment });
       
-      // После сохранения нужно обновить данные
-      onClose(true); // Передаем флаг обновления
+      // Убираем trim() или используем только для проверки на пустую строку
+      const commentToSave = comment === '' ? null : comment;
+      
+      await axios.put(`${API_BASE}/exams/${examId}`, {
+        comment: commentToSave
+      });
+      
     } catch (e) {
       console.error(e);
-      showNotification('Ошибка сохранения комментария', 'error');
+      // Откат при ошибке
+      updateExamInState(examId, { comment: previousComment });
     }
   };
 
   // Добавление нового экзамена для студента
   const handleAddExam = async (studentId) => {
-    if (!mainSubject) {
-      showNotification('Не выбран предмет для экзамена', 'error');
-      return;
-    }
+    if (!mainSubject) return;
 
     const examData = {
       name: examTitle,
@@ -131,13 +178,12 @@ const GroupExamsModal = ({
 
     try {
       const res = await axios.post(`${API_BASE}/exams/`, examData);
-      showNotification('Экзамен добавлен ✓', 'success');
       
-      // После добавления нужно обновить данные
-      onClose(true); // Передаем флаг обновления
+      // Добавляем новый экзамен в локальное состояние
+      addExamToState(res.data);
+      
     } catch (e) {
       console.error(e);
-      showNotification('Ошибка добавления экзамена', 'error');
     }
   };
 
@@ -145,15 +191,21 @@ const GroupExamsModal = ({
   const handleDeleteExam = async (examId) => {
     if (!window.confirm('Удалить этот экзамен? Все результаты будут потеряны.')) return;
 
+    const examToDelete = filteredExams.find(e => e.id === examId);
+    if (!examToDelete) return;
+
     try {
-      await axios.delete(`${API_BASE}/exams/${examId}`);
-      showNotification('Экзамен удалён ✓', 'success');
+      // Удаляем из локального состояния
+      removeExamFromState(examId);
       
-      // После удаления нужно обновить данные
-      onClose(true); // Передаем флаг обновления
+      await axios.delete(`${API_BASE}/exams/${examId}`);
+      
     } catch (e) {
       console.error(e);
-      showNotification('Ошибка удаления экзамена', 'error');
+      // Восстанавливаем при ошибке
+      if (examToDelete) {
+        addExamToState(examToDelete);
+      }
     }
   };
 
@@ -197,13 +249,18 @@ const GroupExamsModal = ({
   }, [group.students]);
 
   return (
-    <Modal onClose={() => onClose(false)} className="group-exams-modal-container">
+    <Modal onClose={handleClose} className="group-exams-modal-container">
       <div className="group-exams-modal">
-        {/* Заголовок с навигацией */}
+        {/* Заголовок с навигации */}
         <div className="group-modal-header">
           <div>
             <button 
-              onClick={onBack}
+              onClick={() => {
+                if (hasChanges && onDataChanged) {
+                  onDataChanged();
+                }
+                onBack();
+              }}
               className="back-btn"
             >
               ← Назад к списку
@@ -211,13 +268,14 @@ const GroupExamsModal = ({
             <h2 className="exam-title-header">
               <span className="exam-icon">📋</span>
               {examTitle}
+              {hasChanges && <span className="changes-indicator"> ●</span>}
             </h2>
             <div className="exam-header-info">
               <span className="teacher-info">👨‍🏫 {group.teacher}</span>
               {group.name && <span className="group-info">👥 {group.name}</span>}
             </div>
           </div>
-          <button onClick={() => onClose(false)} className="close-btn">×</button>
+          <button onClick={handleClose} className="close-btn">×</button>
         </div>
 
         {/* Статистика экзамена */}
@@ -262,11 +320,7 @@ const GroupExamsModal = ({
                 <span className="tasks-count">({tasksCount} заданий)</span>
               )}
             </h3>
-            <div className="subject-actions">
-              <span className="total-exams-count">
-                Работ: <strong>{filteredExams.length}</strong>
-              </span>
-            </div>
+
           </div>
         ) : (
           <div className="no-subject-warning">
@@ -350,51 +404,29 @@ const GroupExamsModal = ({
                       {tasksCount > 0 && (
                         <div className="exam-tasks-section">
                           <div className="tasks-header">
-                            <div className="tasks-label">Ответы по заданиям:</div>
-                            <div className="tasks-total">
-                              Всего заданий: <strong>{tasksCount}</strong>
-                            </div>
+                            <div className="tasks-label">Ответы по заданиям:</div>  
                           </div>
                           
                           <div className="tasks-grid">
                             {Array.from({ length: tasksCount }).map((_, i) => (
                               <div key={i} className="task-item">
                                 <div className="task-header">
-                                  <div className="task-number">№{i + 1}</div>
-                                  <div className="task-max-label">
-                                    макс: {mainSubjectConfig?.maxPerTask?.[i] || 1}
-                                  </div>
+                                  <div className="task-number">{i + 1}</div>
+                                  
                                 </div>
                                 <input
-                                  value={answers[i] || '-'}
+                                  value={answers[i] != '-' ? answers[i] : ''}
                                   maxLength={3}
                                   onChange={(e) => handleTaskChange(exam.id, i, e.target.value)}
                                   className="task-input"
                                   placeholder="-"
                                 />
-                                <div className="task-score">
-                                  {answers[i] !== '-' && answers[i] !== '' 
-                                    ? `+${answers[i]}` 
-                                    : '—'
-                                  }
-                                </div>
+                                
                               </div>
                             ))}
                           </div>
                           
-                          <div className="tasks-summary">
-                            <div className="total-score">
-                              Итоговый балл: <strong>{primaryScore}</strong>
-                              {mainSubjectConfig?.maxScore && (
-                                <span> из {mainSubjectConfig.maxScore}</span>
-                              )}
-                            </div>
-                            {primaryScore > 0 && mainSubjectConfig?.maxScore && (
-                              <div className="score-percentage">
-                                {Math.round((primaryScore / mainSubjectConfig.maxScore) * 100)}%
-                              </div>
-                            )}
-                          </div>
+                         
                         </div>
                       )}
 
@@ -405,11 +437,7 @@ const GroupExamsModal = ({
                             <span className="comment-icon">💬</span>
                             Комментарий преподавателя:
                           </div>
-                          {exam.comment && (
-                            <span className="comment-length">
-                              {exam.comment.length} симв.
-                            </span>
-                          )}
+   
                         </div>
                         <textarea
                           value={exam.comment || ''}
@@ -417,26 +445,19 @@ const GroupExamsModal = ({
                           className="comment-textarea"
                           rows="3"
                           placeholder="Введите комментарий к работе студента..."
+                          // Добавьте эти атрибуты для лучшего UX
+                          onBlur={(e) => {
+                            // Только при потере фокуса проверяем и обрезаем лишние пробелы по краям
+                            const trimmed = e.target.value.trim();
+                            if (trimmed !== e.target.value) {
+                              handleCommentChange(exam.id, trimmed);
+                            }
+                          }}
                         />
-                        {exam.comment && (
-                          <div className="comment-actions">
-                            <span className="comment-hint">
-                              Комментарий сохранён автоматически
-                            </span>
-                          </div>
-                        )}
+                       
                       </div>
 
-                      {/* Информация об экзамене */}
-                      <div className="exam-meta-info">
-                        <span className="exam-id">ID: {exam.id}</span>
-                        <span className="exam-date">
-                          {exam.created_at 
-                            ? new Date(exam.created_at).toLocaleDateString('ru-RU')
-                            : 'Дата не указана'
-                          }
-                        </span>
-                      </div>
+      
                     </div>
                   ) : (
                     <div className="no-exam-content">
@@ -445,12 +466,7 @@ const GroupExamsModal = ({
                         <h4>Нет экзамена</h4>
                         <p>У студента нет этого экзамена</p>
                       </div>
-                      <button
-                        onClick={() => handleAddExam(student.id)}
-                        className="add-exam-btn-small"
-                      >
-                        ➕ Добавить
-                      </button>
+                      
                     </div>
                   )}
                 </div>
@@ -459,22 +475,6 @@ const GroupExamsModal = ({
           )}
         </div>
 
-        {/* Подвал модального окна */}
-        <div className="exam-modal-footer">
-          <div className="footer-actions">
-            <button
-              onClick={onBack}
-              className="btn btn-outline"
-            >
-              ← К списку экзаменов
-            </button>
-            <div className="footer-info">
-              <span className="last-updated">
-                Данные обновлены: {new Date().toLocaleTimeString('ru-RU')}
-              </span>
-            </div>
-          </div>
-        </div>
       </div>
     </Modal>
   );

@@ -71,6 +71,10 @@ const GroupCards = ({ showNotification }) => {
     }
   }, []);
 
+  const handleExamsDataChanged = useCallback(() => {
+    setShouldRefreshExams(true); // Установить флаг для обновления данных
+  }, []);
+
   // Мемоизируем массивы
   const groupsArray = useMemo(() => Array.isArray(groups) ? groups : [], [groups]);
   const examsArray = useMemo(() => Array.isArray(exams) ? exams : [], [exams]);
@@ -213,6 +217,7 @@ const GroupCards = ({ showNotification }) => {
           examTitle={selectedExamTitle}
           onClose={handleCloseModal}
           onBack={handleBackToList}
+          onDataChanged={handleExamsDataChanged}
           // showNotification={stableShowNotification}
         />
       )}
