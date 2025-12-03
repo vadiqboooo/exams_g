@@ -13,11 +13,16 @@ import schemas
 from schemas import GroupStudentsUpdate, GroupUpdate
 from models import Base, Student, Exam, StudyGroup
 
+from auth_routes import router as auth_router
+from auth import get_current_user
+
 
 app = FastAPI(title="Student Exam System", version="1.0.0")
 
 os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -104,9 +109,40 @@ async def create_exam(
 async def read_exams(
     skip: int = 0, 
     limit: int = 100, 
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
 ):
-    exams = await crud.get_exams(db=db, skip=skip, limit=limit)
+    # ADMIN — получает всё
+    if user["role"] == "admin":
+        return await crud.get_exams(db=db, skip=skip, limit=limit)
+
+    # TEACHER — получаем список групп учителя
+    teacher_groups_query = await db.execute(
+        select(StudyGroup.id).where(StudyGroup.teacher == user["teacher_name"])
+    )
+    teacher_groups = teacher_groups_query.scalars().all()
+
+    if not teacher_groups:
+        return []  # учитель без групп → нет экзаменов
+
+    # Получаем ID студентов этих групп
+    students_query = await db.execute(
+        select(Student.id).where(Student.group_id.in_(teacher_groups))
+    )
+    student_ids = students_query.scalars().all()
+
+    if not student_ids:
+        return []
+
+    # Получаем экзамены только этих студентов
+    exams_query = await db.execute(
+        select(Exam)
+        .where(Exam.id_student.in_(student_ids))
+        .offset(skip)
+        .limit(limit)
+    )
+    exams = exams_query.scalars().all()
+
     return exams
 
 @app.get("/exams/{exam_id}", response_model=schemas.ExamResponse)
@@ -149,8 +185,17 @@ async def create_group(group: schemas.GroupCreate, db: AsyncSession = Depends(ge
     return await crud.create_group(db=db, group=group)
 
 @app.get("/groups/", response_model=List[schemas.GroupBase])
-async def read_groups(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(StudyGroup))
+async def read_groups(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    query = select(StudyGroup)
+
+    # Если учитель — показываем только его группы
+    if user["role"] == "teacher":
+        query = query.where(StudyGroup.teacher == user["teacher_name"])
+
+    result = await db.execute(query)
     groups = result.scalars().all()
     return groups
 

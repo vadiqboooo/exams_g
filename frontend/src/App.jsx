@@ -9,6 +9,8 @@ import ExamsTab from './components/exams/GroupCards';
 import ResultsTab from './components/results/ResultsView';
 import GroupsTab from './components/groups/GroupList';
 import Notification from './components/common/Notification';
+import Login from "./pages/Login";
+
 import './styles/App.css';
 
 const tabs = [
@@ -22,11 +24,20 @@ function App() {
   const [activeTab, setActiveTab] = useState('students');
   const [notification, setNotification] = useState(null);
 
+  // ← Проверяем авторизацию
+  const token = localStorage.getItem("token");
+
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3000);
   };
 
+  // ----- ЕСЛИ НЕТ ТОКЕНА → ПОКАЗАТЬ ЛОГИН -----
+  if (!token) {
+    return <Login showNotification={showNotification} />;
+  }
+
+  // ----- ЕСЛИ ВОШЁЛ → ПОКАЗАТЬ ОСНОВНОЙ ИНТЕРФЕЙС -----
   const renderTabContent = () => {
     switch (activeTab) {
       case 'students':
@@ -42,6 +53,14 @@ function App() {
     }
   };
 
+  // Функция выхода
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    localStorage.removeItem("teacher_name");
+    window.location.reload();
+  };
+
   return (
     <StudentsProvider>
       <ExamsProvider>
@@ -49,6 +68,7 @@ function App() {
           <div className="app">
             <header className="app-header">
               <h1>Система учета студентов и экзаменов</h1>
+              <button onClick={logout} className="logout-btn">Выйти</button>
             </header>
 
             <Tabs 

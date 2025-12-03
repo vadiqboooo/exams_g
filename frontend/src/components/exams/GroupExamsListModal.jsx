@@ -70,7 +70,7 @@ const GroupExamsListModal = ({
     if (!newExamName.trim()) return;
     
     // Здесь логика добавления нового типа экзамена
-    showNotification(`Тип экзамена "${newExamName}" добавлен`, 'success');
+    // showNotification(`Тип экзамена "${newExamName}" добавлен`, 'success');
     setNewExamName('');
     setShowAddForm(false);
   }, [newExamName, showNotification]);

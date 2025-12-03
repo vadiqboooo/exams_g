@@ -144,3 +144,18 @@ class GroupBase(BaseModel):
     
     class Config:
         from_attributes = True
+
+class EmployeeCreate(BaseModel):
+    username: str
+    password: str
+    role: str
+    teacher_name: str | None = None
+
+class EmployeeOut(BaseModel):
+    id: int
+    username: str
+    role: str
+    teacher_name: str | None
+
+    class Config:
+        orm_mode = True

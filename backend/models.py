@@ -55,3 +55,12 @@ class Exam(Base):
     comment = Column(Text)
     
     student = relationship("Student", back_populates="exams")
+
+class Employee(Base):
+    __tablename__ = "employees"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    role = Column(String)  # "admin" or "teacher"
+    teacher_name = Column(String, nullable=True) 
