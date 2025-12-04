@@ -3,25 +3,42 @@ from jose import jwt
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import Depends, HTTPException
+import bcrypt
 
 SECRET_KEY = "CHANGE_ME_TO_SOME_RANDOM_SECRET"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 день
 
-# Настройки хэширования
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 # Авторизационный схем
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-# ---- Хэширование пароля ----
-def hash_password(password: str):
-    return pwd_context.hash(password)
+# ---- Хэширование пароля (используем bcrypt напрямую) ----
+def hash_password(password: str) -> str:
+    """Хеширует пароль с автоматической обрезкой до 72 байт"""
+    # Отладка
+    print(f"[DEBUG] Хеширование пароля длиной: {len(password)} символов, {len(password.encode('utf-8'))} байт")
+    
+    # Обрезаем до 72 байт
+    password_bytes = password.encode('utf-8')[:72]
+    
+    # Хешируем
+    hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
+    
+    # Возвращаем как строку
+    return hashed.decode('utf-8')
 
 
-def verify_password(plain_password: str, hashed_password: str):
-    return pwd_context.verify(plain_password, hashed_password)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Проверяет пароль с автоматической обрезкой до 72 байт"""
+    try:
+        # Обрезаем до 72 байт
+        password_bytes = plain_password.encode('utf-8')[:72]
+        hashed_bytes = hashed_password.encode('utf-8')
+        
+        return bcrypt.checkpw(password_bytes, hashed_bytes)
+    except Exception:
+        return False
 
 
 # ---- Создание токена ----

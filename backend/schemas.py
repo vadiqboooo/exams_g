@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, validator, Field
 from typing import Optional, List, Dict
 import re
 
@@ -145,17 +145,38 @@ class GroupBase(BaseModel):
     class Config:
         from_attributes = True
 
+# Для регистрации
 class EmployeeCreate(BaseModel):
     username: str
     password: str
-    role: str
-    teacher_name: str | None = None
+    role: Optional[str] = "teacher"
+    teacher_name: str
+    
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v):
+        if len(v) < 6:
+            raise ValueError('Пароль должен быть не менее 6 символов')
+        return v
 
+# Для вывода информации о сотруднике (без пароля)
 class EmployeeOut(BaseModel):
     id: int
     username: str
     role: str
-    teacher_name: str | None
+    teacher_name: str
 
+    
     class Config:
-        orm_mode = True
+        from_attributes = True  # Для работы с ORM объектами SQLAlchemy
+
+# Для аутентификации
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+# Для ответа при логине
+class LoginResponse(BaseModel):
+    access_token: str
+    role: str
+    teacher_name: str
