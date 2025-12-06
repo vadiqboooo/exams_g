@@ -84,8 +84,8 @@ const GroupExamsListModal = ({
       <div className="group-exams-modal">
         <div className="group-modal-header">
           <div>
-            <h2>{group.name || `Группа ${group.teacher}`}</h2>
-            <p className="teacher-info">👨‍🏫 {group.teacher}</p>
+            <h2>{group.name || `Группа ${group.teacher_name || group.teacher || ''}`}</h2>
+            <p className="teacher-info">👨‍🏫 {group.teacher_name || group.teacher || 'Не указан'}</p>
             {mainSubject && (
               <p className="subject-info">📖 {getSubjectDisplayName(mainSubject)}</p>
             )}

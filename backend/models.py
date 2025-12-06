@@ -22,13 +22,14 @@ class StudyGroup(Base):
     school = Column(String(100), nullable=True)  # "Байкальская" или "Лермонтова"
     exam_type = Column(String(20), nullable=True)  # "ЕГЭ" или "ОГЭ"
     subject = Column(String(100), nullable=True)  # "Русский язык", "Математика" и т.д.
-    teacher = Column(String(200), nullable=False)
+    teacher_id = Column(Integer, ForeignKey('employees.id'), nullable=False)
     
     # Расписание в формате JSON
     # Пример: {"monday": "10:00-12:00", "wednesday": "14:00-16:00", ...}
     schedule = Column(JSON, nullable=True)
     
     students = relationship("Student", secondary=group_student_association, back_populates="groups")
+    teacher = relationship("Employee", back_populates="groups")
 
 class Student(Base):
     __tablename__ = 'student'
@@ -63,4 +64,6 @@ class Employee(Base):
     username = Column(String, unique=True, index=True)
     password_hash = Column(String)
     role = Column(String)  # "admin" or "teacher"
-    teacher_name = Column(String, nullable=True) 
+    teacher_name = Column(String, nullable=True)
+    
+    groups = relationship("StudyGroup", back_populates="teacher") 

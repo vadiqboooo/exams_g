@@ -155,7 +155,7 @@ const GroupCards = ({ showNotification }) => {
           }
           
           const mainSubjectExamsCount = groupExams.filter(e => e.subject === mainSubject).length;
-          const displayName = group.name || `${group.exam_type || ''} ${getSubjectDisplayName(mainSubject)} - ${group.teacher}`.trim();
+          const displayName = group.name || `${group.exam_type || ''} ${getSubjectDisplayName(mainSubject)} - ${group.teacher_name || group.teacher || ''}`.trim();
           
           let groupInfo = [];
           if (group.school) groupInfo.push(`🏫 ${group.school}`);
@@ -180,7 +180,7 @@ const GroupCards = ({ showNotification }) => {
               )}
               
               <div className="group-details">
-                <span>👨‍🏫 {group.teacher}</span>
+                <span>👨‍🏫 {group.teacher_name || group.teacher || 'Не указан'}</span>
                 <span>📖 {getSubjectDisplayName(mainSubject)}</span>
                 {group.schedule && (
                   <span className="schedule">

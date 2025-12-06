@@ -26,7 +26,7 @@ const Filters = ({ filters, groups, onFilterChange, onClearFilters }) => {
             <option value="">Все группы</option>
             {groupsArray.map(group => (
               <option key={group.id} value={group.id}>
-                {group.name || group.teacher || `Группа ${group.id}`}
+                {group.name || group.teacher_name || group.teacher || `Группа ${group.id}`}
               </option>
             ))}
           </select>

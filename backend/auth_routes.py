@@ -26,6 +26,7 @@ async def login(username: str, password: str, db: AsyncSession = Depends(get_db)
 
     token = create_access_token({
         "sub": user.username,
+        "username": user.username,
         "role": user.role,
         "teacher_name": user.teacher_name
     })
@@ -69,4 +70,4 @@ async def register(data: EmployeeCreate, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(new_user)
 
-    return EmployeeOut.from_orm(new_user)  # Конвертируем в Pydantic модель
+    return EmployeeOut.model_validate(new_user)  # Конвертируем в Pydantic модель

@@ -8,6 +8,12 @@ import './GroupExamsDetailsModal.css';
 
 const API_BASE = 'http://127.0.0.1:8000';
 
+// Функция для получения заголовков с токеном
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 const GroupExamsModal = ({ 
   group, 
   allExams, 
@@ -129,6 +135,8 @@ const GroupExamsModal = ({
       
       await axios.put(`${API_BASE}/exams/${examId}`, {
         answer: newAnswer
+      }, {
+        headers: getAuthHeaders()
       });
       
     } catch (e) {
@@ -155,6 +163,8 @@ const GroupExamsModal = ({
       
       await axios.put(`${API_BASE}/exams/${examId}`, {
         comment: commentToSave
+      }, {
+        headers: getAuthHeaders()
       });
       
     } catch (e) {
@@ -177,7 +187,9 @@ const GroupExamsModal = ({
     };
 
     try {
-      const res = await axios.post(`${API_BASE}/exams/`, examData);
+      const res = await axios.post(`${API_BASE}/exams/`, examData, {
+        headers: getAuthHeaders()
+      });
       
       // Добавляем новый экзамен в локальное состояние
       addExamToState(res.data);
@@ -198,7 +210,9 @@ const GroupExamsModal = ({
       // Удаляем из локального состояния
       removeExamFromState(examId);
       
-      await axios.delete(`${API_BASE}/exams/${examId}`);
+      await axios.delete(`${API_BASE}/exams/${examId}`, {
+        headers: getAuthHeaders()
+      });
       
     } catch (e) {
       console.error(e);
@@ -271,7 +285,7 @@ const GroupExamsModal = ({
               {hasChanges && <span className="changes-indicator"> ●</span>}
             </h2>
             <div className="exam-header-info">
-              <span className="teacher-info">👨‍🏫 {group.teacher}</span>
+              <span className="teacher-info">👨‍🏫 {group.teacher_name || group.teacher || 'Не указан'}</span>
               {group.name && <span className="group-info">👥 {group.name}</span>}
             </div>
           </div>

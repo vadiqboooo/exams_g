@@ -11,14 +11,20 @@ depends_on = None
 
 
 def upgrade():
-    op.create_table(
-        'employees',
-        sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('username', sa.String(), unique=True, index=True),
-        sa.Column('password_hash', sa.String()),
-        sa.Column('role', sa.String()),
-        sa.Column('teacher_name', sa.String(), nullable=True),
-    )
+    # Проверяем, существует ли таблица
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    tables = inspector.get_table_names()
+    
+    if 'employees' not in tables:
+        op.create_table(
+            'employees',
+            sa.Column('id', sa.Integer(), primary_key=True),
+            sa.Column('username', sa.String(), unique=True, index=True),
+            sa.Column('password_hash', sa.String()),
+            sa.Column('role', sa.String()),
+            sa.Column('teacher_name', sa.String(), nullable=True),
+        )
 
 
 def downgrade():

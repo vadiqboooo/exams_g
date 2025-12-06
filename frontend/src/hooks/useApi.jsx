@@ -13,17 +13,35 @@ export const useApi = () => {
     setError(null);
     
     try {
+      // Получаем токен из localStorage
+      const token = localStorage.getItem('token');
+      
       const config = {
         method,
         url: `${API_BASE}${endpoint}`,
+        headers: {},
         ...(data && { data })
       };
+      
+      // Добавляем токен в заголовок Authorization, если он есть
+      if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+      }
       
       const response = await axios(config);
       return response.data;
     } catch (err) {
       const errorMessage = err.response?.data?.detail || err.response?.data?.message || err.message || 'Ошибка соединения';
       setError(errorMessage);
+      
+      // Если ошибка аутентификации, очищаем токен и перенаправляем на страницу входа
+      if (err.response?.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        localStorage.removeItem('teacher_name');
+        // Не перенаправляем автоматически, чтобы компонент мог обработать ошибку
+      }
+      
       throw new Error(errorMessage);
     } finally {
       setLoading(false);

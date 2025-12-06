@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from models import Student, Exam, StudyGroup
+from models import Student, Exam, StudyGroup, Employee
 from schemas import StudentCreate, StudentUpdate, ExamCreate, ExamUpdate, GroupCreate, GroupUpdate
 from typing import List, Optional
 
@@ -122,18 +122,19 @@ async def create_group(db: AsyncSession, group: GroupCreate):
     return db_group
 
 async def get_groups_with_students(db: AsyncSession):
-    """Получение всех групп со студентами"""
+    """Получение всех групп со студентами и учителями"""
     result = await db.execute(
-        select(StudyGroup).options(selectinload(StudyGroup.students))
+        select(StudyGroup)
+        .options(selectinload(StudyGroup.students), selectinload(StudyGroup.teacher))
     )
     groups = result.unique().scalars().all()
     return groups
 
 async def get_group(db: AsyncSession, group_id: int):
-    """Получение одной группы со студентами"""
+    """Получение одной группы со студентами и учителем"""
     result = await db.execute(
         select(StudyGroup)
-        .options(selectinload(StudyGroup.students))
+        .options(selectinload(StudyGroup.students), selectinload(StudyGroup.teacher))
         .where(StudyGroup.id == group_id)
     )
     return result.scalar_one_or_none()
@@ -142,7 +143,7 @@ async def update_group(db: AsyncSession, group_id: int, group_update: GroupUpdat
     """Обновление информации о группе (название, школа, предмет, расписание и т.д.)"""
     result = await db.execute(
         select(StudyGroup)
-        .options(selectinload(StudyGroup.students))
+        .options(selectinload(StudyGroup.students), selectinload(StudyGroup.teacher))
         .where(StudyGroup.id == group_id)
     )
     db_group = result.scalar_one_or_none()
@@ -159,7 +160,7 @@ async def update_group(db: AsyncSession, group_id: int, group_update: GroupUpdat
     # Перезагружаем группу со всеми связями
     result = await db.execute(
         select(StudyGroup)
-        .options(selectinload(StudyGroup.students))
+        .options(selectinload(StudyGroup.students), selectinload(StudyGroup.teacher))
         .where(StudyGroup.id == group_id)
     )
     return result.scalar_one_or_none()
@@ -168,7 +169,7 @@ async def update_group_students(db: AsyncSession, group_id: int, student_ids: Li
     """Обновление состава студентов в группе"""
     result = await db.execute(
         select(StudyGroup)
-        .options(selectinload(StudyGroup.students))
+        .options(selectinload(StudyGroup.students), selectinload(StudyGroup.teacher))
         .where(StudyGroup.id == group_id)
     )
     group = result.scalar_one_or_none()
@@ -185,7 +186,13 @@ async def update_group_students(db: AsyncSession, group_id: int, student_ids: Li
     group.students = new_students
     await db.commit()
     await db.refresh(group)
-    return group
+    # Перезагружаем с учителем
+    result = await db.execute(
+        select(StudyGroup)
+        .options(selectinload(StudyGroup.students), selectinload(StudyGroup.teacher))
+        .where(StudyGroup.id == group_id)
+    )
+    return result.scalar_one_or_none()
 
 async def delete_group(db: AsyncSession, group_id: int):
     """Удаление группы"""

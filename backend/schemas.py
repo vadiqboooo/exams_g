@@ -81,7 +81,7 @@ class GroupCreate(BaseModel):
     school: Optional[str] = None
     exam_type: Optional[str] = None
     subject: Optional[str] = None
-    teacher: str
+    teacher_id: int
     schedule: Optional[Dict[str, str]] = None
     
     @field_validator('exam_type')
@@ -96,7 +96,7 @@ class GroupUpdate(BaseModel):
     school: Optional[str] = None
     exam_type: Optional[str] = None
     subject: Optional[str] = None
-    teacher: Optional[str] = None
+    teacher_id: Optional[int] = None
     schedule: Optional[Dict[str, str]] = None
     
     @field_validator('exam_type')
@@ -112,12 +112,29 @@ class GroupResponse(BaseModel):
     school: Optional[str] = None
     exam_type: Optional[str] = None
     subject: Optional[str] = None
-    teacher: str
+    teacher_id: int
+    teacher_name: Optional[str] = None  # Имя учителя из relationship
     schedule: Optional[Dict[str, str]] = None
     students: List[StudentResponse] = []
     
     class Config:
         from_attributes = True
+    
+    @classmethod
+    def from_orm_with_teacher(cls, obj):
+        """Создает GroupResponse с информацией об учителе"""
+        data = {
+            'id': obj.id,
+            'name': obj.name,
+            'school': obj.school,
+            'exam_type': obj.exam_type,
+            'subject': obj.subject,
+            'teacher_id': obj.teacher_id,
+            'teacher_name': obj.teacher.teacher_name if obj.teacher else None,
+            'schedule': obj.schedule,
+            'students': [StudentResponse.model_validate(s) for s in obj.students] if obj.students else []
+        }
+        return cls(**data)
 
 class GroupWithStudentsResponse(BaseModel):
     id: int
@@ -125,12 +142,29 @@ class GroupWithStudentsResponse(BaseModel):
     school: Optional[str] = None
     exam_type: Optional[str] = None
     subject: Optional[str] = None
-    teacher: str
+    teacher_id: int
+    teacher_name: Optional[str] = None
     schedule: Optional[Dict[str, str]] = None
     students: List[StudentResponse] = []
 
     class Config:
         from_attributes = True
+    
+    @classmethod
+    def from_orm_with_teacher(cls, obj):
+        """Создает GroupWithStudentsResponse с информацией об учителе"""
+        data = {
+            'id': obj.id,
+            'name': obj.name,
+            'school': obj.school,
+            'exam_type': obj.exam_type,
+            'subject': obj.subject,
+            'teacher_id': obj.teacher_id,
+            'teacher_name': obj.teacher.teacher_name if obj.teacher else None,
+            'schedule': obj.schedule,
+            'students': [StudentResponse.model_validate(s) for s in obj.students] if obj.students else []
+        }
+        return cls(**data)
 
 class GroupStudentsUpdate(BaseModel):
     student_ids: List[int] = []
@@ -141,9 +175,25 @@ class GroupBase(BaseModel):
     school: Optional[str] = None
     exam_type: Optional[str] = None
     subject: Optional[str] = None
+    teacher_id: int
+    teacher_name: Optional[str] = None
     
     class Config:
         from_attributes = True
+    
+    @classmethod
+    def from_orm_with_teacher(cls, obj):
+        """Создает GroupBase с информацией об учителе"""
+        data = {
+            'id': obj.id,
+            'name': obj.name,
+            'school': obj.school,
+            'exam_type': obj.exam_type,
+            'subject': obj.subject,
+            'teacher_id': obj.teacher_id,
+            'teacher_name': obj.teacher.teacher_name if obj.teacher else None
+        }
+        return cls(**data)
 
 # Для регистрации
 class EmployeeCreate(BaseModel):

@@ -14,7 +14,7 @@ const GroupModal = ({ group, onClose, showNotification }) => {
           <div className="group-details">
             <div className="detail-item">
               <strong>Преподаватель:</strong>
-              <span>👨‍🏫 {group.teacher}</span>
+              <span>👨‍🏫 {group.teacher_name || group.teacher || 'Не указан'}</span>
             </div>
             
             {group.school && (
