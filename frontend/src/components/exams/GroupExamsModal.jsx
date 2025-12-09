@@ -17,7 +17,7 @@ const getAuthHeaders = () => {
 const GroupExamsModal = ({ 
   group, 
   allExams, 
-  examTitle,
+  examTypeId, // Изменили с examTitle на examTypeId
   onClose, 
   onBack,
   onDataChanged // Новый пропс для уведомления об изменениях
@@ -33,19 +33,32 @@ const GroupExamsModal = ({
     setHasChanges(false); // Сбрасываем флаг изменений при получении новых данных
   }, [allExams]);
 
-  // Фильтруем экзамены по названию для выбранной группы
+  // Получаем название экзамена из exam_type
+  const examTypeName = useMemo(() => {
+    if (!allExams || !examTypeId) return null;
+    const examWithType = allExams.find(e => e.exam_type_id === examTypeId);
+    return examWithType?.name || null;
+  }, [allExams, examTypeId]);
+
+  // Фильтруем экзамены по exam_type_id для выбранной группы
   const filteredExams = useMemo(() => {
-    if (!group || !localExams || !examTitle) return [];
+    if (!group || !localExams || !examTypeId) return [];
     
     const groupStudentIds = group.students?.map(s => s.id) || [];
     return localExams.filter(exam => 
       groupStudentIds.includes(exam.id_student) && 
-      (exam.name === examTitle || (!exam.name && examTitle === 'Без названия'))
+      exam.exam_type_id === examTypeId
     );
-  }, [group, localExams, examTitle]);
+  }, [group, localExams, examTypeId]);
 
-  // Определяем основной предмет по отфильтрованным экзаменам
+  // Определяем основной предмет: сначала из группы, потом из экзаменов
   const mainSubject = useMemo(() => {
+    // Если в группе указан предмет, используем его
+    if (group?.subject) {
+      return group.subject;
+    }
+    
+    // Иначе определяем по экзаменам
     if (!filteredExams.length) return null;
     
     const subjectCounts = {};
@@ -61,12 +74,13 @@ const GroupExamsModal = ({
     return subjects.sort((a, b) => 
       subjectCounts[b] - subjectCounts[a]
     )[0];
-  }, [filteredExams]);
+  }, [group, filteredExams]);
 
-  const mainSubjectConfig = useMemo(() => 
-    mainSubject ? SUBJECT_TASKS[mainSubject] || null : null, 
-    [mainSubject]
-  );
+  // Определяем конфигурацию предмета для количества заданий
+  const mainSubjectConfig = useMemo(() => {
+    const subject = group?.subject || mainSubject;
+    return subject ? SUBJECT_TASKS[subject] || null : null;
+  }, [group, mainSubject]);
   
   const tasksCount = mainSubjectConfig?.tasks || 0;
 
@@ -176,13 +190,28 @@ const GroupExamsModal = ({
 
   // Добавление нового экзамена для студента
   const handleAddExam = async (studentId) => {
-    if (!mainSubject) return;
+    // Определяем предмет: сначала из группы, потом из mainSubject
+    const subject = group?.subject || mainSubject;
+    
+    if (!subject || !examTypeId) {
+      console.error('Не удалось создать экзамен: отсутствует предмет или тип экзамена', { subject, examTypeId, group });
+      return;
+    }
+
+    // Получаем конфигурацию предмета для определения количества заданий
+    const subjectConfig = SUBJECT_TASKS[subject];
+    const tasksCountForSubject = subjectConfig?.tasks || 0;
+
+    // Формируем ответ: заполняем дефолтными значениями по количеству заданий
+    const answer = tasksCountForSubject > 0 
+      ? Array(tasksCountForSubject).fill('-').join(',') 
+      : null;
 
     const examData = {
-      name: examTitle,
+      exam_type_id: examTypeId,
       id_student: studentId,
-      subject: mainSubject,
-      answer: tasksCount > 0 ? Array(tasksCount).fill('-').join(',') : null,
+      subject: subject,
+      answer: answer,
       comment: null
     };
 
@@ -192,10 +221,25 @@ const GroupExamsModal = ({
       });
       
       // Добавляем новый экзамен в локальное состояние
-      addExamToState(res.data);
+      // Убеждаемся, что в ответе есть name из exam_type
+      const examWithName = {
+        ...res.data,
+        name: res.data.name || examTypeName || 'Экзамен'
+      };
+      addExamToState(examWithName);
+      
+      // Уведомляем об изменениях - это вызовет перезагрузку экзаменов в родительском компоненте
+      if (onDataChanged) {
+        onDataChanged();
+      }
+      
+      // Также обновляем локальное состояние сразу
+      setHasChanges(true);
       
     } catch (e) {
-      console.error(e);
+      console.error('Ошибка создания экзамена:', e);
+      const errorMessage = e.response?.data?.detail || e.response?.data?.message || e.message || 'Неизвестная ошибка';
+      alert('Ошибка создания экзамена: ' + errorMessage);
     }
   };
 
@@ -252,7 +296,7 @@ const GroupExamsModal = ({
     };
   }, [group, filteredExams]);
 
-  if (!group || !examTitle) return null;
+  if (!group || !examTypeId) return null;
 
   // Сортируем студентов по ФИО
   const sortedStudents = useMemo(() => {
@@ -281,7 +325,7 @@ const GroupExamsModal = ({
             </button>
             <h2 className="exam-title-header">
               <span className="exam-icon">📋</span>
-              {examTitle}
+              {examTypeName || 'Экзамен'}
               {hasChanges && <span className="changes-indicator"> ●</span>}
             </h2>
             <div className="exam-header-info">

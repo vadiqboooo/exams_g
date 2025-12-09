@@ -19,10 +19,10 @@ async def login(username: str, password: str, db: AsyncSession = Depends(get_db)
     user = result.scalar_one_or_none()
 
     if not user:
-        raise HTTPException(status_code=401, detail="User not found")
+        raise HTTPException(status_code=401, detail="Неверный логин или пароль")
 
     if not verify_password(password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid password")
+        raise HTTPException(status_code=401, detail="Неверный логин или пароль")
 
     token = create_access_token({
         "sub": user.username,

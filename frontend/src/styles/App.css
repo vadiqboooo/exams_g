@@ -20,10 +20,16 @@ body {
 }
 
 .app-header {
-  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 30px;
-  padding-bottom: 20px;
+  padding: 20px 0;
   border-bottom: 2px solid #eaeaea;
+  position: relative;
+  /* Фиксируем высоту, чтобы избежать дергания при открытии меню */
+  height: 80px;
+  box-sizing: border-box;
 }
 
 .app-header h1 {
@@ -31,6 +37,97 @@ body {
   margin: 0;
   font-size: 2.2rem;
   font-weight: 600;
+  flex: 1;
+  text-align: center;
+}
+
+/* Меню пользователя */
+.user-menu-container {
+  position: relative;
+  z-index: 1000;
+  /* Изолируем от влияния на layout */
+  flex-shrink: 0;
+}
+
+.user-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #495057;
+  transition: background-color 0.2s, border-color 0.2s;
+  /* Предотвращаем изменение размера при нажатии */
+  outline: none;
+  box-sizing: border-box;
+  /* Фиксируем размеры, чтобы избежать дергания */
+  white-space: nowrap;
+  user-select: none;
+}
+
+.user-menu-btn:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
+}
+
+.user-name {
+  font-weight: 500;
+}
+
+.menu-arrow {
+  font-size: 10px;
+  color: #6c757d;
+}
+
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 150px;
+  z-index: 1001;
+  animation: slideDown 0.2s ease;
+  /* Предотвращаем влияние на layout страницы */
+  margin: 0;
+  padding: 4px 0;
+  /* Изолируем от остального контента */
+  isolation: isolate;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.logout-menu-btn {
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  color: #dc3545;
+  transition: background 0.2s;
+  border-radius: 8px;
+}
+
+.logout-menu-btn:hover {
+  background: #f8f9fa;
+  color: #c82333;
 }
 
 /* Табы */

@@ -5,7 +5,7 @@ import GroupForm from './GroupForm';
 import GroupModal from './GroupModal';
 import Modal from '../common/Modal';
 
-const GroupList = ({ showNotification }) => {
+const GroupList = ({ showNotification, isAdmin = true }) => {
   const { groups, loadGroups, deleteGroup } = useGroups();
   const { students, loadStudents } = useStudents();
   const [showForm, setShowForm] = useState(false);
@@ -15,7 +15,8 @@ const GroupList = ({ showNotification }) => {
   useEffect(() => {
     loadGroups();
     loadStudents();
-  }, [loadGroups, loadStudents]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Загружаем только при монтировании компонента
 
   const handleDelete = async (id, name) => {
     if (window.confirm(`Удалить группу "${name}"?`)) {
@@ -32,12 +33,14 @@ const GroupList = ({ showNotification }) => {
     <div className="groups-tab-container">
       <div className="section-header">
         <h2>Учебные группы</h2>
-        <button 
-          onClick={() => setShowForm(true)}
-          className="btn btn-success"
-        >
-          + Создать новую группу
-        </button>
+        {isAdmin && (
+          <button 
+            onClick={() => setShowForm(true)}
+            className="btn btn-success"
+          >
+            + Создать новую группу
+          </button>
+        )}
       </div>
 
       {groups.length === 0 ? (

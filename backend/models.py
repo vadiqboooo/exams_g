@@ -30,6 +30,7 @@ class StudyGroup(Base):
     
     students = relationship("Student", secondary=group_student_association, back_populates="groups")
     teacher = relationship("Employee", back_populates="groups")
+    exam_types = relationship("ExamType", back_populates="group")
 
 class Student(Base):
     __tablename__ = 'student'
@@ -45,17 +46,29 @@ class Student(Base):
     exams = relationship("Exam", back_populates="student")
     groups = relationship("StudyGroup", secondary=group_student_association, back_populates="students")
 
+
+class ExamType(Base):
+    __tablename__ = 'exam_types'
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)  # Убрали unique, так как для разных групп могут быть одинаковые названия
+    group_id = Column(Integer, ForeignKey('study_group.id'), nullable=False)
+
+    exams = relationship("Exam", back_populates="exam_type")
+    group = relationship("StudyGroup", back_populates="exam_types")
+
 class Exam(Base):
     __tablename__ = 'exam'
     
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False)
+    exam_type_id = Column(Integer, ForeignKey('exam_types.id'), nullable=False)  # Связь с типом экзамена (название берется оттуда)
     id_student = Column(Integer, ForeignKey('student.id'), nullable=False)
     subject = Column(String(100), nullable=False)
     answer = Column(Text)
     comment = Column(Text)
     
     student = relationship("Student", back_populates="exams")
+    exam_type = relationship("ExamType", back_populates="exams")
 
 class Employee(Base):
     __tablename__ = "employees"

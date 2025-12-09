@@ -34,7 +34,8 @@ const ResultsView = ({ showNotification }) => {
     };
     
     loadData();
-  }, [loadStudents, loadExams, loadGroups, showNotification]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Загружаем только при монтировании компонента
 
   useEffect(() => {
     // Убедимся, что все данные - массивы

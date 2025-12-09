@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from models import Student, Exam, StudyGroup, Employee
+from models import Student, Exam, StudyGroup, Employee, ExamType
 from schemas import StudentCreate, StudentUpdate, ExamCreate, ExamUpdate, GroupCreate, GroupUpdate
 from typing import List, Optional
 
@@ -57,6 +57,20 @@ async def update_student(db: AsyncSession, student_id: int, student_update: Stud
 # ==================== EXAM CRUD ====================
 
 async def create_exam(db: AsyncSession, exam: ExamCreate):
+    # Проверяем, что тип экзамена существует
+    result = await db.execute(
+        select(ExamType).where(ExamType.id == exam.exam_type_id)
+    )
+    exam_type = result.scalar_one_or_none()
+    if not exam_type:
+        raise ValueError("Тип экзамена не найден")
+    
+    # Проверяем, что студент существует
+    student_result = await db.execute(select(Student).where(Student.id == exam.id_student))
+    student = student_result.scalar_one_or_none()
+    if not student:
+        raise ValueError("Студент не найден")
+
     db_exam = Exam(**exam.dict())
     db.add(db_exam)
     await db.commit()
@@ -65,17 +79,28 @@ async def create_exam(db: AsyncSession, exam: ExamCreate):
 
 async def get_exams(db: AsyncSession, skip: int = 0, limit: int = 100):
     result = await db.execute(
-        select(Exam).offset(skip).limit(limit)
+        select(Exam)
+        .options(selectinload(Exam.exam_type))
+        .offset(skip)
+        .limit(limit)
     )
     return result.scalars().all()
 
 async def get_exam(db: AsyncSession, exam_id: int):
-    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    result = await db.execute(
+        select(Exam)
+        .options(selectinload(Exam.exam_type))
+        .where(Exam.id == exam_id)
+    )
     return result.scalar_one_or_none()
 
 async def get_exams_with_students(db: AsyncSession, skip: int = 0, limit: int = 100):
     result = await db.execute(
-        select(Exam).join(Student).offset(skip).limit(limit)
+        select(Exam)
+        .options(selectinload(Exam.exam_type), selectinload(Exam.student))
+        .join(Student)
+        .offset(skip)
+        .limit(limit)
     )
     return result.scalars().all()
 
@@ -86,19 +111,67 @@ async def get_exams_by_student(db: AsyncSession, student_id: int):
     return result.scalars().all()
 
 async def update_exam(db: AsyncSession, exam_id: int, exam_update: ExamUpdate):
-    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    result = await db.execute(
+        select(Exam)
+        .options(selectinload(Exam.exam_type))
+        .where(Exam.id == exam_id)
+    )
     db_exam = result.scalar_one_or_none()
     
     if db_exam is None:
         return None
     
     update_data = exam_update.dict(exclude_unset=True)
+
+    # Если поменяли exam_type_id — проверяем, что тип существует
+    if "exam_type_id" in update_data:
+        type_result = await db.execute(
+            select(ExamType).where(ExamType.id == update_data["exam_type_id"])
+        )
+        exam_type = type_result.scalar_one_or_none()
+        if not exam_type:
+            raise ValueError("Тип экзамена не найден")
+
     for field, value in update_data.items():
         setattr(db_exam, field, value)
     
     await db.commit()
     await db.refresh(db_exam)
     return db_exam
+
+# ==================== EXAM TYPE CRUD ====================
+
+async def get_exam_types(db: AsyncSession, group_id: Optional[int] = None):
+    query = select(ExamType)
+    if group_id is not None:
+        query = query.where(ExamType.group_id == group_id)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+async def create_exam_type(db: AsyncSession, name: str, group_id: int):
+    # Проверяем, что группа существует
+    group_result = await db.execute(select(StudyGroup).where(StudyGroup.id == group_id))
+    group = group_result.scalar_one_or_none()
+    if not group:
+        raise ValueError("Группа не найдена")
+    
+    # Проверяем, нет ли уже экзамена с таким названием в этой группе
+    existing = await db.execute(
+        select(ExamType).where(
+            ExamType.name == name,
+            ExamType.group_id == group_id
+        )
+    )
+    exam_type = existing.scalar_one_or_none()
+    if exam_type:
+        return exam_type
+
+    exam_type = ExamType(name=name, group_id=group_id)
+    db.add(exam_type)
+    await db.commit()
+    await db.refresh(exam_type)
+    return exam_type
 
 async def delete_exam(db: AsyncSession, exam_id: int):
     result = await db.execute(select(Exam).where(Exam.id == exam_id))

@@ -31,7 +31,7 @@ class StudentResponse(StudentBase):
         from_attributes = True
 
 class ExamBase(BaseModel):
-    name: str
+    exam_type_id: int  # ID типа экзамена (название берется из exam_type)
     id_student: int
     subject: str
     answer: Optional[str] = None
@@ -49,7 +49,7 @@ class ExamCreate(ExamBase):
     pass
 
 class ExamUpdate(BaseModel):
-    name: Optional[str] = None
+    exam_type_id: Optional[int] = None
     subject: Optional[str] = None
     answer: Optional[str] = None
     comment: Optional[str] = None
@@ -62,14 +62,52 @@ class ExamUpdate(BaseModel):
                 raise ValueError('Ответ должен содержать только цифры, тире (-), запятые и пробелы')
         return v
 
-class ExamResponse(ExamBase):
+class ExamResponse(BaseModel):
     id: int
+    exam_type_id: int
+    id_student: int
+    subject: str
+    answer: Optional[str] = None
+    comment: Optional[str] = None
+    name: Optional[str] = None  # Название экзамена из exam_type (будет заполняться через relationship)
     
     class Config:
         from_attributes = True
+    
+    @classmethod
+    def from_orm_with_name(cls, obj):
+        """Создает ExamResponse с названием из exam_type"""
+        data = {
+            'id': obj.id,
+            'exam_type_id': obj.exam_type_id,
+            'id_student': obj.id_student,
+            'subject': obj.subject,
+            'answer': obj.answer,
+            'comment': obj.comment,
+            'name': obj.exam_type.name if obj.exam_type else None
+        }
+        return cls(**data)
 
 class ExamWithStudentResponse(ExamResponse):
     student: StudentResponse
+
+
+# ==== ТИПЫ ЭКЗАМЕНОВ ====
+
+class ExamTypeBase(BaseModel):
+    name: str
+    group_id: int
+
+
+class ExamTypeCreate(ExamTypeBase):
+    pass
+
+
+class ExamTypeResponse(ExamTypeBase):
+    id: int
+
+    class Config:
+        from_attributes = True
 
 class StudentWithExamsResponse(StudentResponse):
     exams: List[ExamResponse] = []

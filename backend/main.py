@@ -1,11 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from typing import List
+from typing import List, Optional
 import os
 
 from database import get_db, create_tables
@@ -116,7 +116,15 @@ async def create_exam(
         raise HTTPException(status_code=404, detail="Student not found")
     
     try:
-        return await crud.create_exam(db=db, exam=exam)
+        created_exam = await crud.create_exam(db=db, exam=exam)
+        # Перезагружаем с exam_type для получения названия
+        result = await db.execute(
+            select(Exam)
+            .options(selectinload(Exam.exam_type))
+            .where(Exam.id == created_exam.id)
+        )
+        exam_with_type = result.scalar_one_or_none()
+        return schemas.ExamResponse.from_orm_with_name(exam_with_type)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -130,7 +138,8 @@ async def read_exams(
  
     # ADMIN — получает всё
     if user.get("role") == "admin":
-        return await crud.get_exams(db=db, skip=skip, limit=limit)
+        exams = await crud.get_exams(db=db, skip=skip, limit=limit)
+        return [schemas.ExamResponse.from_orm_with_name(exam) for exam in exams]
     
     # TEACHER — получаем ID учителя и список его групп
     username = user.get("username") or user.get("sub")
@@ -165,23 +174,24 @@ async def read_exams(
     if not student_ids:
         return []
 
-    # Получаем экзамены только этих студентов
+    # Получаем экзамены только этих студентов с загрузкой exam_type
     exams_query = await db.execute(
         select(Exam)
+        .options(selectinload(Exam.exam_type))
         .where(Exam.id_student.in_(student_ids))
         .offset(skip)
         .limit(limit)
     )
     exams = exams_query.scalars().all()
 
-    return exams
+    return [schemas.ExamResponse.from_orm_with_name(exam) for exam in exams]
 
 @app.get("/exams/{exam_id}", response_model=schemas.ExamResponse)
 async def read_exam(exam_id: int, db: AsyncSession = Depends(get_db)):
     exam = await crud.get_exam(db=db, exam_id=exam_id)
     if exam is None:
         raise HTTPException(status_code=404, detail="Exam not found")
-    return exam
+    return schemas.ExamResponse.from_orm_with_name(exam)
 
 @app.put("/exams/{exam_id}", response_model=schemas.ExamResponse)
 async def update_exam(
@@ -189,10 +199,13 @@ async def update_exam(
     exam_update: schemas.ExamUpdate,
     db: AsyncSession = Depends(get_db)
 ):
-    exam = await crud.update_exam(db=db, exam_id=exam_id, exam_update=exam_update)
-    if exam is None:
-        raise HTTPException(status_code=404, detail="Exam not found")
-    return exam
+    try:
+        exam = await crud.update_exam(db=db, exam_id=exam_id, exam_update=exam_update)
+        if exam is None:
+            raise HTTPException(status_code=404, detail="Exam not found")
+        return schemas.ExamResponse.from_orm_with_name(exam)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.delete("/exams/{exam_id}")
 async def delete_exam(exam_id: int, db: AsyncSession = Depends(get_db)):
@@ -208,7 +221,44 @@ async def read_exams_with_students(
     db: AsyncSession = Depends(get_db)
 ):
     exams = await crud.get_exams_with_students(db=db, skip=skip, limit=limit)
-    return exams
+    # Преобразуем в ExamWithStudentResponse с названием и студентом
+    result = []
+    for exam in exams:
+        exam_response = schemas.ExamResponse.from_orm_with_name(exam)
+        result.append(schemas.ExamWithStudentResponse(
+            **exam_response.model_dump(),
+            student=schemas.StudentResponse.model_validate(exam.student)
+        ))
+    return result
+
+# Exam type endpoints
+@app.get("/exam-types/", response_model=List[schemas.ExamTypeResponse])
+async def read_exam_types(
+    group_id: Optional[int] = Query(None, description="ID группы для фильтрации"),
+    db: AsyncSession = Depends(get_db)
+):
+    return await crud.get_exam_types(db, group_id=group_id)
+
+
+@app.post("/exam-types/", response_model=schemas.ExamTypeResponse, status_code=201)
+async def create_exam_type(
+    exam_type: schemas.ExamTypeCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    if not exam_type.name.strip():
+        raise HTTPException(status_code=400, detail="Название типа экзамена не может быть пустым")
+    try:
+        return await crud.create_exam_type(db, exam_type.name.strip(), exam_type.group_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # Обработка IntegrityError (если все же произойдет)
+        if "UNIQUE constraint" in str(e) or "IntegrityError" in str(type(e).__name__):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Экзамен с названием '{exam_type.name}' уже существует в этой группе"
+            )
+        raise HTTPException(status_code=500, detail=f"Ошибка создания типа экзамена: {str(e)}")
 
 # Group endpoints
 @app.post("/groups/", response_model=schemas.GroupResponse)

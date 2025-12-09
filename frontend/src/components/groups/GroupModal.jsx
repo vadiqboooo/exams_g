@@ -54,6 +54,7 @@ const GroupModal = ({ group, onClose, showNotification }) => {
                 {group.students.map(student => (
                   <div key={student.id} className="student-item">
                     <span>{student.fio}</span>
+                    <span> {student.id}</span>
                     {student.phone && (
                       <span className="phone">📱 {student.phone}</span>
                     )}

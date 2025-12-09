@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useGroups } from '../../hooks/useGroups';
 import { useExams } from '../../hooks/useExams';
+import { useApi } from '../../hooks/useApi';
 import GroupExamsListModal from './GroupExamsListModal';
 import GroupExamsModal from './GroupExamsModal';
 import ExamForm from './ExamForm';
@@ -10,10 +11,12 @@ const GroupCards = ({ showNotification }) => {
   const { groups, loadGroups } = useGroups();
   const { exams, loadExams } = useExams();
   const [selectedGroup, setSelectedGroup] = useState(null);
-  const [selectedExamTitle, setSelectedExamTitle] = useState(null);
+  const [selectedExamTypeId, setSelectedExamTypeId] = useState(null);
   const [showExamForm, setShowExamForm] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [shouldRefreshExams, setShouldRefreshExams] = useState(false);
+  const [allExamTypes, setAllExamTypes] = useState([]);
+  const { makeRequest } = useApi();
 
   // Загрузка данных
   useEffect(() => {
@@ -22,7 +25,9 @@ const GroupCards = ({ showNotification }) => {
       try {
         await Promise.all([
           loadGroups(),
-          loadExams()
+          loadExams(),
+          // Загружаем все типы экзаменов для фильтрации
+          makeRequest('GET', '/exam-types/').then(data => setAllExamTypes(data || []))
         ]);
       } catch (err) {
         showNotification('Ошибка загрузки данных', 'error');
@@ -32,7 +37,8 @@ const GroupCards = ({ showNotification }) => {
     };
     
     fetchData();
-  }, [loadGroups, loadExams, showNotification]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Загружаем только при монтировании компонента
 
   // Перезагрузка экзаменов при необходимости
   useEffect(() => {
@@ -45,20 +51,20 @@ const GroupCards = ({ showNotification }) => {
   // Обработчики для двухуровневой навигации
   const handleGroupClick = useCallback((group) => {
     setSelectedGroup(group);
-    setSelectedExamTitle(null); // Сбрасываем выбранный экзамен
+    setSelectedExamTypeId(null); // Сбрасываем выбранный экзамен
   }, []);
 
-  const handleSelectExam = useCallback((examTitle) => {
-    setSelectedExamTitle(examTitle);
+  const handleSelectExam = useCallback((examTypeId) => {
+    setSelectedExamTypeId(examTypeId);
   }, []);
 
   const handleBackToList = useCallback(() => {
-    setSelectedExamTitle(null);
+    setSelectedExamTypeId(null);
   }, []);
 
   const handleCloseModal = useCallback((needsRefresh = false) => {
     setSelectedGroup(null);
-    setSelectedExamTitle(null);
+    setSelectedExamTypeId(null);
     if (needsRefresh) {
       setShouldRefreshExams(true);
     }
@@ -138,10 +144,32 @@ const GroupCards = ({ showNotification }) => {
           const studentsCount = group.students?.length || 0;
           const groupStudentIds = group.students?.map(s => s.id) || [];
           
-          const groupExams = examsArray.filter(exam => groupStudentIds.includes(exam.id_student));
+          // Получаем exam_type_id, которые принадлежат этой группе
+          const groupExamTypeIds = new Set(
+            allExamTypes
+              .filter(et => et.group_id === group.id)
+              .map(et => et.id)
+          );
           
-          // Подсчитываем уникальные названия экзаменов
-          const examTitles = [...new Set(groupExams.map(exam => exam.name || 'Без названия'))];
+          // Фильтруем экзамены: только для студентов группы И только те, у которых exam_type принадлежит этой группе
+          const groupExams = examsArray.filter(exam => {
+            // Проверяем, что студент в группе
+            if (!groupStudentIds.includes(exam.id_student)) {
+              return false;
+            }
+            // Проверяем, что exam_type принадлежит этой группе
+            if (exam.exam_type_id && !groupExamTypeIds.has(exam.exam_type_id)) {
+              return false;
+            }
+            return true;
+          });
+          
+          // Подсчитываем уникальные типы экзаменов (только те, что принадлежат этой группе)
+          const examTypeIds = [...new Set(
+            groupExams
+              .map(exam => exam.exam_type_id)
+              .filter(id => id && groupExamTypeIds.has(id))
+          )];
           
           let mainSubject = group.subject || 'Не указан';
           if (!group.subject) {
@@ -190,7 +218,7 @@ const GroupCards = ({ showNotification }) => {
               </div>
               
               <div className="group-footer">
-                <span>📊 Экзаменов: <strong>{examTitles.length}</strong> ({mainSubjectExamsCount} работ)</span>
+                <span>📊 Экзаменов: <strong>{examTypeIds.length}</strong> ({mainSubjectExamsCount} работ)</span>
                 <span className="open-arrow">Открыть →</span>
               </div>
             </div>
@@ -199,7 +227,7 @@ const GroupCards = ({ showNotification }) => {
       </div>
 
       {/* Модальное окно со списком экзаменов */}
-      {selectedGroup && !selectedExamTitle && (
+      {selectedGroup && !selectedExamTypeId && (
         <GroupExamsListModal
           group={selectedGroup}
           allExams={examsArray}
@@ -210,11 +238,11 @@ const GroupCards = ({ showNotification }) => {
       )}
 
       {/* Модальное окно с деталями конкретного экзамена */}
-      {selectedGroup && selectedExamTitle && (
+      {selectedGroup && selectedExamTypeId && (
         <GroupExamsModal
           group={selectedGroup}
           allExams={examsArray}
-          examTitle={selectedExamTitle}
+          examTypeId={selectedExamTypeId}
           onClose={handleCloseModal}
           onBack={handleBackToList}
           onDataChanged={handleExamsDataChanged}

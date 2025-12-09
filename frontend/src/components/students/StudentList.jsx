@@ -24,7 +24,8 @@ const StudentList = ({ showNotification }) => {
     };
     
     fetchStudents();
-  }, [loadStudents, showNotification]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Загружаем только при монтировании компонента
 
   const handleDelete = async (id, name) => {
     if (window.confirm(`Удалить студента ${name}?`)) {
