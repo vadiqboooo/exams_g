@@ -184,6 +184,32 @@ async def delete_exam(db: AsyncSession, exam_id: int):
     await db.commit()
     return True
 
+async def delete_exam_type(db: AsyncSession, exam_type_id: int):
+    """Удаление типа экзамена. Сначала проверяем, есть ли экзамены с этим типом."""
+    # Проверяем, есть ли экзамены с этим типом
+    exams_result = await db.execute(
+        select(Exam).where(Exam.exam_type_id == exam_type_id)
+    )
+    exams = exams_result.scalars().all()
+    
+    if exams:
+        # Если есть экзамены, сначала удаляем их
+        for exam in exams:
+            await db.delete(exam)
+    
+    # Удаляем сам тип экзамена
+    exam_type_result = await db.execute(
+        select(ExamType).where(ExamType.id == exam_type_id)
+    )
+    db_exam_type = exam_type_result.scalar_one_or_none()
+    
+    if db_exam_type is None:
+        return False
+    
+    await db.delete(db_exam_type)
+    await db.commit()
+    return True
+
 # ==================== GROUP CRUD ====================
 
 async def create_group(db: AsyncSession, group: GroupCreate):

@@ -260,6 +260,14 @@ async def create_exam_type(
             )
         raise HTTPException(status_code=500, detail=f"Ошибка создания типа экзамена: {str(e)}")
 
+@app.delete("/exam-types/{exam_type_id}")
+async def delete_exam_type(exam_type_id: int, db: AsyncSession = Depends(get_db)):
+    """Удаление типа экзамена. Все связанные экзамены также будут удалены."""
+    success = await crud.delete_exam_type(db=db, exam_type_id=exam_type_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Exam type not found")
+    return {"message": "Exam type and all related exams deleted successfully"}
+
 # Group endpoints
 @app.post("/groups/", response_model=schemas.GroupResponse)
 async def create_group(group: schemas.GroupCreate, db: AsyncSession = Depends(get_db)):

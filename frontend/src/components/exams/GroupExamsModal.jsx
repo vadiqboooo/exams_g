@@ -3,6 +3,7 @@ import axios from 'axios';
 import Modal from '../common/Modal';
 import { getSubjectDisplayName } from '../../utils/helpers';
 import { SUBJECT_TASKS } from '../../services/constants';
+import { useApi } from '../../hooks/useApi';
 import './GroupExamsModal.css';
 import './GroupExamsDetailsModal.css';
 
@@ -26,6 +27,8 @@ const GroupExamsModal = ({
   const [localExams, setLocalExams] = useState(allExams);
   // Флаг для отслеживания изменений
   const [hasChanges, setHasChanges] = useState(false);
+  const [examType, setExamType] = useState(null);
+  const { makeRequest } = useApi();
   
   // Обновляем локальное состояние при изменении пропса
   useEffect(() => {
@@ -33,12 +36,37 @@ const GroupExamsModal = ({
     setHasChanges(false); // Сбрасываем флаг изменений при получении новых данных
   }, [allExams]);
 
+  // Загружаем тип экзамена для получения названия
+  useEffect(() => {
+    if (!examTypeId || !group?.id) return;
+    
+    const loadExamType = async () => {
+      try {
+        const examTypes = await makeRequest('GET', `/exam-types/?group_id=${group.id}`);
+        const foundType = examTypes.find(t => t.id === examTypeId);
+        if (foundType) {
+          setExamType(foundType);
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки типа экзамена:', err);
+      }
+    };
+    
+    loadExamType();
+  }, [examTypeId, group?.id, makeRequest]);
+
   // Получаем название экзамена из exam_type
   const examTypeName = useMemo(() => {
-    if (!allExams || !examTypeId) return null;
-    const examWithType = allExams.find(e => e.exam_type_id === examTypeId);
-    return examWithType?.name || null;
-  }, [allExams, examTypeId]);
+    if (examType) {
+      return examType.name;
+    }
+    // Fallback: пытаемся получить из exam, если тип еще не загружен
+    if (allExams && examTypeId) {
+      const examWithType = allExams.find(e => e.exam_type_id === examTypeId);
+      return examWithType?.exam_type?.name || examWithType?.name || null;
+    }
+    return null;
+  }, [examType, allExams, examTypeId]);
 
   // Фильтруем экзамены по exam_type_id для выбранной группы
   const filteredExams = useMemo(() => {
@@ -221,10 +249,10 @@ const GroupExamsModal = ({
       });
       
       // Добавляем новый экзамен в локальное состояние
-      // Убеждаемся, что в ответе есть name из exam_type
+      // Название типа экзамена уже есть в examTypeName из загруженного examType
       const examWithName = {
         ...res.data,
-        name: res.data.name || examTypeName || 'Экзамен'
+        name: examTypeName || res.data.exam_type?.name || 'Экзамен'
       };
       addExamToState(examWithName);
       
@@ -328,10 +356,7 @@ const GroupExamsModal = ({
               {examTypeName || 'Экзамен'}
               {hasChanges && <span className="changes-indicator"> ●</span>}
             </h2>
-            <div className="exam-header-info">
-              <span className="teacher-info">👨‍🏫 {group.teacher_name || group.teacher || 'Не указан'}</span>
-              {group.name && <span className="group-info">👥 {group.name}</span>}
-            </div>
+            
           </div>
           <button onClick={handleClose} className="close-btn">×</button>
         </div>

@@ -43,7 +43,12 @@ const GroupCards = ({ showNotification }) => {
   // Перезагрузка экзаменов при необходимости
   useEffect(() => {
     if (shouldRefreshExams) {
-      loadExams();
+      console.log('Перезагружаем экзамены из базы данных...');
+      loadExams().then(() => {
+        console.log('Экзамены успешно перезагружены');
+      }).catch(err => {
+        console.error('Ошибка перезагрузки экзаменов:', err);
+      });
       setShouldRefreshExams(false);
     }
   }, [shouldRefreshExams, loadExams]);
@@ -78,6 +83,7 @@ const GroupCards = ({ showNotification }) => {
   }, []);
 
   const handleExamsDataChanged = useCallback(() => {
+    console.log('handleExamsDataChanged вызван, устанавливаем shouldRefreshExams в true');
     setShouldRefreshExams(true); // Установить флаг для обновления данных
   }, []);
 
@@ -233,7 +239,8 @@ const GroupCards = ({ showNotification }) => {
           allExams={examsArray}
           onClose={handleCloseModal}
           onSelectExam={handleSelectExam}
-          // showNotification={stableShowNotification}
+          showNotification={stableShowNotification}
+          onDataChanged={handleExamsDataChanged}
         />
       )}
 

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import Modal from '../common/Modal';
-import { getSubjectDisplayName } from '../../utils/helpers';
+import { getSubjectDisplayName, getDeclension } from '../../utils/helpers';
 import { useApi } from '../../hooks/useApi';
 import './GroupExamsModal.css';
 import './GroupExamsListModal.css'; // Добавьте эту строку
@@ -10,13 +10,25 @@ const GroupExamsListModal = ({
   allExams, 
   onClose, 
   onSelectExam,
-  showNotification 
+  showNotification,
+  onDataChanged 
 }) => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newExamName, setNewExamName] = useState('');
+  const [selectedExamType, setSelectedExamType] = useState('');
+  const [customExamName, setCustomExamName] = useState('');
   const [examTypes, setExamTypes] = useState([]);
   const [addingType, setAddingType] = useState(false);
+  const [deletingTypeId, setDeletingTypeId] = useState(null);
   const { makeRequest } = useApi();
+
+  // Предустановленные типы экзаменов
+  const predefinedExamTypes = [
+    'Входное экзамен',
+    'Осенний пробник',
+    'Зимний пробник',
+    'Весенний пробник'
+  ];
 
   // Загружаем типы экзаменов для конкретной группы
   useEffect(() => {
@@ -114,18 +126,34 @@ const GroupExamsListModal = ({
 
   const handleAddExamType = useCallback(async (e) => {
     e.preventDefault();
-    if (!newExamName.trim() || !group?.id) return;
+    
+    // Определяем название экзамена
+    let examName = '';
+    if (selectedExamType === 'custom') {
+      examName = customExamName.trim();
+    } else if (selectedExamType) {
+      examName = selectedExamType;
+    } else {
+      // Fallback на старое поле, если оно используется
+      examName = newExamName.trim();
+    }
+    
+    if (!examName || !group?.id) return;
     
     setAddingType(true);
     try {
-      const payload = { name: newExamName.trim(), group_id: group.id };
+      const payload = { name: examName, group_id: group.id };
       const created = await makeRequest('POST', '/exam-types/', payload);
       setExamTypes((prev) => {
         const exists = prev.some((t) => t.id === created.id || (t.name === created.name && t.group_id === created.group_id));
         return exists ? prev : [...prev, created];
       });
       showNotification?.(`Тип экзамена "${created.name}" добавлен`, 'success');
+      
+      // Сбрасываем форму
       setNewExamName('');
+      setSelectedExamType('');
+      setCustomExamName('');
       setShowAddForm(false);
       
       // Автоматически выбираем только что созданный тип экзамена
@@ -137,7 +165,48 @@ const GroupExamsListModal = ({
     } finally {
       setAddingType(false);
     }
-  }, [makeRequest, newExamName, showNotification, group, onSelectExam]);
+  }, [makeRequest, selectedExamType, customExamName, newExamName, showNotification, group, onSelectExam]);
+
+  // Удаление всех экзаменов определенного типа
+  const handleDeleteExamType = useCallback(async (typeId, e) => {
+    e.stopPropagation(); // Предотвращаем открытие деталей экзамена
+    
+    const examData = examsByTypeId[typeId];
+    const examTypeName = examData?.examType?.name || 'экзамен';
+    const examsCount = examData?.exams?.length || 0;
+    
+    if (!window.confirm(
+      `Удалить "${examTypeName}"?\n\nБудет удалено ${examsCount} ${getDeclension(examsCount, 'работа', 'работы', 'работ')}. Все результаты будут потеряны.`
+    )) {
+      return;
+    }
+
+    setDeletingTypeId(typeId);
+    try {
+      // Удаляем тип экзамена через API - это автоматически удалит все связанные экзамены
+      console.log(`Удаляем тип экзамена ${typeId} и все связанные экзамены`);
+      
+      await makeRequest('DELETE', `/exam-types/${typeId}`);
+      console.log('Тип экзамена и все связанные экзамены успешно удалены из базы данных');
+      
+      // Удаляем тип экзамена из локального состояния
+      setExamTypes((prev) => prev.filter(t => t.id !== typeId));
+      
+      showNotification?.(`Экзамен "${examTypeName}" удален`, 'success');
+      
+      // Уведомляем родительский компонент об изменениях для перезагрузки данных из базы
+      // Это вызовет loadExams() в родительском компоненте через shouldRefreshExams
+      if (onDataChanged) {
+        console.log('Вызываем onDataChanged для перезагрузки данных');
+        onDataChanged();
+      }
+    } catch (err) {
+      console.error('Ошибка удаления типа экзамена:', err);
+      showNotification?.(err.message || 'Не удалось удалить экзамен', 'error');
+    } finally {
+      setDeletingTypeId(null);
+    }
+  }, [examsByTypeId, makeRequest, showNotification, onDataChanged]);
 
   const examTypeIds = Object.keys(examsByTypeId).map(id => parseInt(id));
 
@@ -160,7 +229,15 @@ const GroupExamsListModal = ({
         <div className="exams-list-header">
           <h3>📋 Список экзаменов</h3>
           <button 
-            onClick={() => setShowAddForm(!showAddForm)}
+            onClick={() => {
+              setShowAddForm(!showAddForm);
+              if (showAddForm) {
+                // Сбрасываем форму при закрытии
+                setSelectedExamType('');
+                setCustomExamName('');
+                setNewExamName('');
+              }
+            }}
             className="btn btn-outline btn-sm"
           >
             {showAddForm ? 'Отмена' : '➕ Добавить тип экзамена'}
@@ -169,17 +246,47 @@ const GroupExamsListModal = ({
 
         {showAddForm && (
           <form onSubmit={handleAddExamType} className="add-exam-type-form">
-            <input
-              type="text"
-              value={newExamName}
-              onChange={(e) => setNewExamName(e.target.value)}
-              placeholder="Введите название экзамена"
-              className="exam-name-input"
-              autoFocus
-            />
-            <button type="submit" className="btn btn-success btn-sm" disabled={addingType}>
-              {addingType ? 'Сохранение...' : 'Добавить'}
-            </button>
+            <div className="add-exam-type-form-row">
+              <select
+                value={selectedExamType}
+                onChange={(e) => {
+                  setSelectedExamType(e.target.value);
+                  if (e.target.value !== 'custom') {
+                    setCustomExamName('');
+                  }
+                }}
+                className="exam-type-select"
+                autoFocus
+              >
+                <option value="">Выберите тип экзамена</option>
+                {predefinedExamTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+                <option value="custom">Свой вариант</option>
+              </select>
+              
+              <button 
+                type="submit" 
+                className="btn btn-success btn-sm" 
+                disabled={addingType || (!selectedExamType || (selectedExamType === 'custom' && !customExamName.trim()))}
+              >
+                {addingType ? 'Сохранение...' : 'Добавить'}
+              </button>
+            </div>
+            
+            {selectedExamType === 'custom' && (
+              <div className="add-exam-type-form-row">
+                <input
+                  type="text"
+                  value={customExamName}
+                  onChange={(e) => setCustomExamName(e.target.value)}
+                  placeholder="Введите название экзамена"
+                  className="exam-name-input"
+                />
+              </div>
+            )}
           </form>
         )}
 
@@ -204,18 +311,25 @@ const GroupExamsListModal = ({
                     onClick={() => onSelectExam(typeId)}
                   >
                     <div className="exam-title-header">
-                      <h4>{examTypeName}</h4>
-                      <span className="exam-count">
-                        {examData.exams.length} {getDeclension(examData.exams.length, 'работа', 'работы', 'работ')}
-                      </span>
+                      <h4 style={{ flex: 1 }}>
+                        {examTypeName}
+                      </h4>
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        <span className="exam-count">
+                          {examData.exams.length} {getDeclension(examData.exams.length, 'работа', 'работы', 'работ')}
+                        </span>
+                        <button
+                          onClick={(e) => handleDeleteExamType(typeId, e)}
+                          className="delete-exam-type-btn"
+                          disabled={deletingTypeId === typeId}
+                          title="Удалить экзамен"
+                        >
+                          {deletingTypeId === typeId ? '⏳' : '🗑️'}
+                        </button>
+                      </div>
                     </div>
                     
-                    <div className="exam-title-details">
-                      <span>👥 {examData.studentCount} {getDeclension(examData.studentCount, 'студент', 'студента', 'студентов')}</span>
-                      {subjects.length > 0 && (
-                        <span>📚 {subjects.map(s => getSubjectDisplayName(s)).join(', ')}</span>
-                      )}
-                    </div>
+                    
                     
                     <div className="exam-title-footer">
                       <span className="open-details">Посмотреть результаты →</span>
@@ -229,23 +343,6 @@ const GroupExamsListModal = ({
       </div>
     </Modal>
   );
-};
-
-// Вспомогательная функция для склонения
-const getDeclension = (number, one, two, five) => {
-  let n = Math.abs(number);
-  n %= 100;
-  if (n >= 5 && n <= 20) {
-    return five;
-  }
-  n %= 10;
-  if (n === 1) {
-    return one;
-  }
-  if (n >= 2 && n <= 4) {
-    return two;
-  }
-  return five;
 };
 
 export default GroupExamsListModal;
