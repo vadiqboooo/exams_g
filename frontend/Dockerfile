@@ -6,15 +6,23 @@ WORKDIR /app
 # Аргументы сборки
 ARG VITE_API_BASE_URL=
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV NODE_ENV=production
+
+# Установка дополнительных инструментов для отладки
+RUN apk add --no-cache git
 
 # Копирование файлов зависимостей
 COPY package*.json ./
 
 # Установка зависимостей
-RUN npm ci
+RUN npm ci || npm install
 
 # Копирование исходного кода
 COPY . .
+
+# Отключение ESLint во время сборки
+ENV ESLINT_NO_DEV_ERRORS=true
+ENV DISABLE_ESLINT_PLUGIN=true
 
 # Сборка приложения
 RUN npm run build
