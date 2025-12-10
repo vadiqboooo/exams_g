@@ -130,6 +130,8 @@ const ResultsView = ({ showNotification }) => {
                 student={student}
                 exams={studentExams}
                 groups={Array.isArray(groups) ? groups : []}
+                showNotification={showNotification}
+                onStudentUpdate={loadStudents}
               />
             );
           })}

@@ -744,6 +744,7 @@ body {
   margin-bottom: 15px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: background-color 0.2s;
 }
 
 .student-results-header {
@@ -759,6 +760,15 @@ body {
 
 .student-results-header:hover {
   background: #e9ecef;
+}
+
+/* Если карточка имеет цветной фон, header должен быть прозрачным */
+.student-results-card[style*="background-color"] .student-results-header {
+  background: transparent !important;
+}
+
+.student-results-card[style*="background-color"] .student-results-header:hover {
+  background: rgba(0, 0, 0, 0.02) !important;
 }
 
 .student-results-header.expanded {

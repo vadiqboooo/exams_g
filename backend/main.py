@@ -60,7 +60,10 @@ async def create_student(
     student: schemas.StudentCreate, 
     db: AsyncSession = Depends(get_db)
 ):
-    return await crud.create_student(db=db, student=student)
+    try:
+        return await crud.create_student(db=db, student=student)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/students/", response_model=List[schemas.StudentResponse])
 async def read_students(
@@ -69,7 +72,8 @@ async def read_students(
     db: AsyncSession = Depends(get_db)
 ):
     students = await crud.get_students(db=db, skip=skip, limit=limit)
-    return students
+    # Явно преобразуем в схемы, чтобы убедиться, что все поля включены
+    return [schemas.StudentResponse.model_validate(s) for s in students]
 
 @app.get("/students/{student_id}", response_model=schemas.StudentResponse)
 async def read_student(student_id: int, db: AsyncSession = Depends(get_db)):
@@ -88,6 +92,16 @@ async def update_student(
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
     return student
+
+@app.delete("/students/{student_id}")
+async def delete_student(
+    student_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    success = await crud.delete_student(db=db, student_id=student_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return {"message": "Student deleted successfully"}
 
 @app.get("/students/{student_id}/exams", response_model=schemas.StudentWithExamsResponse)
 async def read_student_with_exams(student_id: int, db: AsyncSession = Depends(get_db)):
