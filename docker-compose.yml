@@ -3,16 +3,16 @@ version: '3.8'
 services:
   backend:
     build:
-      context: ./exams_g/backend
+      context: ./backend
       dockerfile: Dockerfile
     container_name: exams_backend
     ports:
       - "8000:8000"
     volumes:
       # Монтируем базу данных для сохранения данных
-      - ./exams_g/backend/school.db:/app/school.db
+      - ./backend/school.db:/app/school.db
       # Монтируем статические файлы
-      - ./exams_g/backend/static:/app/static
+      - ./backend/static:/app/static
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./school.db
     restart: unless-stopped
@@ -25,7 +25,7 @@ services:
 
   frontend:
     build:
-      context: ./exams_g/frontend
+      context: ./frontend
       dockerfile: Dockerfile
       args:
         - VITE_API_BASE_URL=
