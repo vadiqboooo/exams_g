@@ -267,6 +267,13 @@
   color: #28a745;
 }
 
+.score-max {
+  font-size: 16px;
+  color: #6c757d;
+  margin-left: 4px;
+  font-weight: 500;
+}
+
 /* Кнопки действий */
 .delete-exam-btn,
 .add-exam-btn {
@@ -363,6 +370,12 @@
   font-weight: bold;
   font-size: 16px;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+}
+
+.task-number.task-completed {
+  background: #c8e6c9; /* Бледно-зеленый цвет */
+  color: #2e7d32; /* Темно-зеленый цвет для текста */
+  border: 2px solid #81c784;
 }
 
 .task-input {
@@ -546,6 +559,12 @@
     width: 40px;
     height: 40px;
     font-size: 15px;
+  }
+  
+  .task-number.task-completed {
+    background: #c8e6c9;
+    color: #2e7d32;
+    border: 2px solid #81c784;
   }
   
   .task-input {

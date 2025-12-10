@@ -2,7 +2,9 @@
 import { useState, useCallback } from 'react';
 import axios from 'axios';
 
-const API_BASE = 'http://127.0.0.1:8000';
+// Используем относительный путь для работы через nginx proxy в Docker
+// В development можно использовать полный URL
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 export const useApi = () => {
   const [loading, setLoading] = useState(false);
@@ -19,7 +21,9 @@ export const useApi = () => {
       const config = {
         method,
         url: `${API_BASE}${endpoint}`,
-        headers: {},
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8'
+        },
         ...(data && { data })
       };
       
@@ -31,7 +35,40 @@ export const useApi = () => {
       const response = await axios(config);
       return response.data;
     } catch (err) {
-      const errorMessage = err.response?.data?.detail || err.response?.data?.message || err.message || 'Ошибка соединения';
+      // Логируем детали ошибки для отладки
+      console.error('API Request Error:', {
+        method: method,
+        url: `${API_BASE}${endpoint}`,
+        data: data,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        responseData: err.response?.data,
+        message: err.message,
+        code: err.code
+      });
+      
+      // Для ошибок валидации (422) показываем детали
+      let errorMessage = err.response?.data?.detail || err.response?.data?.message || err.message || 'Ошибка соединения';
+      
+      // Если это ошибка валидации, пытаемся извлечь детали
+      if (err.response?.status === 422 && err.response?.data?.detail) {
+        if (Array.isArray(err.response.data.detail)) {
+          // Pydantic validation errors
+          const validationErrors = err.response.data.detail.map(e => 
+            `${e.loc?.join('.')}: ${e.msg}`
+          ).join('; ');
+          errorMessage = `Ошибка валидации: ${validationErrors}`;
+        } else if (typeof err.response.data.detail === 'string') {
+          errorMessage = err.response.data.detail;
+        }
+      }
+      
+      console.error('API Error:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: errorMessage
+      });
+      
       setError(errorMessage);
       
       // Если ошибка аутентификации, очищаем токен и перенаправляем на страницу входа

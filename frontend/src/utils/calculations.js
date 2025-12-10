@@ -74,11 +74,23 @@ export function calculateTotalScore(subject, answers) {
   return primary; // для остальных — просто первичный балл
 }
 
-// Расчет первичного балла
-export function calculatePrimaryScore(answers) {
+// Расчет первичного балла с учетом максимальных баллов за задания
+export function calculatePrimaryScore(answers, subject = null, maxPerTask = null) {
   if (!answers || answers.length === 0) return 0;
-  return answers.reduce((sum, s) => {
+  
+  return answers.reduce((sum, s, index) => {
     const trimmed = s ? s.trim() : '';
-    return sum + (trimmed !== '-' ? (parseInt(trimmed) || 0) : 0);
+    if (trimmed === '-') return sum;
+    
+    const score = parseInt(trimmed) || 0;
+    
+    // Если есть maxPerTask, проверяем, что балл не превышает максимум
+    if (maxPerTask && maxPerTask[index] !== undefined) {
+      const max = maxPerTask[index];
+      // Если балл превышает максимум, используем максимум (для безопасности)
+      return sum + Math.min(score, max);
+    }
+    
+    return sum + score;
   }, 0);
 }

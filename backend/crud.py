@@ -4,6 +4,7 @@ from sqlalchemy.orm import selectinload
 from models import Student, Exam, StudyGroup, Employee, ExamType
 from schemas import StudentCreate, StudentUpdate, ExamCreate, ExamUpdate, GroupCreate, GroupUpdate
 from typing import List, Optional
+import json
 
 # ==================== STUDENT CRUD ====================
 
@@ -149,7 +150,7 @@ async def get_exam_types(db: AsyncSession, group_id: Optional[int] = None):
     return result.scalars().all()
 
 
-async def create_exam_type(db: AsyncSession, name: str, group_id: int):
+async def create_exam_type(db: AsyncSession, name: str, group_id: int, completed_tasks: Optional[List[int]] = None):
     # Проверяем, что группа существует
     group_result = await db.execute(select(StudyGroup).where(StudyGroup.id == group_id))
     group = group_result.scalar_one_or_none()
@@ -165,12 +166,42 @@ async def create_exam_type(db: AsyncSession, name: str, group_id: int):
     )
     exam_type = existing.scalar_one_or_none()
     if exam_type:
+        # Если тип экзамена уже существует, обновляем completed_tasks
+        if completed_tasks is not None:
+            exam_type.completed_tasks = completed_tasks
+            await db.commit()
+            await db.refresh(exam_type)
         return exam_type
 
-    exam_type = ExamType(name=name, group_id=group_id)
+    # Логируем перед созданием
+    print(f"CRUD: Creating exam type with completed_tasks={completed_tasks}, type={type(completed_tasks)}")
+    
+    # Создаем объект ExamType
+    # Явно устанавливаем completed_tasks, чтобы убедиться, что оно сохраняется
+    exam_type = ExamType(
+        name=name, 
+        group_id=group_id
+    )
+    
+    # Явно устанавливаем completed_tasks после создания объекта
+    if completed_tasks is not None:
+        exam_type.completed_tasks = completed_tasks
+        print(f"CRUD: Set completed_tasks to {exam_type.completed_tasks}")
+    
     db.add(exam_type)
+    await db.flush()  # Flush перед commit, чтобы проверить состояние
+    print(f"CRUD: After flush - completed_tasks={exam_type.completed_tasks}, type={type(exam_type.completed_tasks)}")
     await db.commit()
     await db.refresh(exam_type)
+    print(f"CRUD: After refresh - completed_tasks={exam_type.completed_tasks}, type={type(exam_type.completed_tasks)}")
+    
+    # Проверяем, что данные действительно сохранились
+    # Читаем из БД заново для проверки
+    verify_result = await db.execute(select(ExamType).where(ExamType.id == exam_type.id))
+    verify_exam_type = verify_result.scalar_one_or_none()
+    if verify_exam_type:
+        print(f"CRUD: Verified from DB - completed_tasks={verify_exam_type.completed_tasks}, type={type(verify_exam_type.completed_tasks)}")
+    
     return exam_type
 
 async def delete_exam(db: AsyncSession, exam_id: int):
@@ -214,11 +245,31 @@ async def delete_exam_type(db: AsyncSession, exam_type_id: int):
 
 async def create_group(db: AsyncSession, group: GroupCreate):
     """Создание новой группы"""
-    db_group = StudyGroup(**group.dict())
-    db.add(db_group)
-    await db.commit()
-    await db.refresh(db_group)
-    return db_group
+    try:
+        # Используем model_dump для Pydantic v2 или dict для v1
+        group_data = group.model_dump() if hasattr(group, 'model_dump') else group.dict()
+        
+        # Убеждаемся, что schedule правильно обрабатывается как JSON
+        if 'schedule' in group_data and group_data['schedule'] is not None:
+            # schedule уже должен быть словарем, SQLAlchemy JSON обработает его автоматически
+            pass
+        
+        print(f"Creating group with data: {group_data}")  # Отладочный вывод
+        
+        db_group = StudyGroup(**group_data)
+        db.add(db_group)
+        await db.flush()  # Flush перед commit для проверки, но не commit здесь
+        # НЕ делаем commit здесь - пусть вызывающий код управляет транзакцией
+        await db.refresh(db_group)
+        return db_group
+    except Exception as e:
+        await db.rollback()
+        print(f"Error creating group: {e}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        print(f"Group data: {group_data if 'group_data' in locals() else 'N/A'}")
+        raise
 
 async def get_groups_with_students(db: AsyncSession):
     """Получение всех групп со студентами и учителями"""

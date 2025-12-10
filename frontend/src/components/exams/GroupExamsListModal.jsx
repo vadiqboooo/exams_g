@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import Modal from '../common/Modal';
-import { getSubjectDisplayName, getDeclension } from '../../utils/helpers';
+import { getSubjectDisplayName, getDeclension, formatTaskNumber } from '../../utils/helpers';
 import { useApi } from '../../hooks/useApi';
+import { SUBJECT_TASKS } from '../../services/constants';
 import './GroupExamsModal.css';
 import './GroupExamsListModal.css'; // Добавьте эту строку
 
@@ -20,6 +21,7 @@ const GroupExamsListModal = ({
   const [examTypes, setExamTypes] = useState([]);
   const [addingType, setAddingType] = useState(false);
   const [deletingTypeId, setDeletingTypeId] = useState(null);
+  const [completedTasks, setCompletedTasks] = useState(new Set()); // Множество выбранных заданий
   const { makeRequest } = useApi();
 
   // Предустановленные типы экзаменов
@@ -124,6 +126,26 @@ const GroupExamsListModal = ({
     )[0] || null;
   }, [group, allExams]);
 
+  // Количество заданий для предмета группы
+  const tasksCount = useMemo(() => {
+    if (!mainSubject) return 0;
+    const subjectConfig = SUBJECT_TASKS[mainSubject];
+    return subjectConfig?.tasks || 0;
+  }, [mainSubject]);
+
+  // Обработчик клика по заданию
+  const handleTaskToggle = useCallback((taskNumber) => {
+    setCompletedTasks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskNumber)) {
+        newSet.delete(taskNumber);
+      } else {
+        newSet.add(taskNumber);
+      }
+      return newSet;
+    });
+  }, []);
+
   const handleAddExamType = useCallback(async (e) => {
     e.preventDefault();
     
@@ -142,8 +164,16 @@ const GroupExamsListModal = ({
     
     setAddingType(true);
     try {
-      const payload = { name: examName, group_id: group.id };
+      // Преобразуем Set в отсортированный массив
+      const completedTasksArray = Array.from(completedTasks).sort((a, b) => a - b);
+      const payload = { 
+        name: examName, 
+        group_id: group.id,
+        completed_tasks: completedTasksArray.length > 0 ? completedTasksArray : undefined
+      };
+      console.log('Sending payload:', JSON.stringify(payload, null, 2));
       const created = await makeRequest('POST', '/exam-types/', payload);
+      console.log('Received response:', JSON.stringify(created, null, 2));
       setExamTypes((prev) => {
         const exists = prev.some((t) => t.id === created.id || (t.name === created.name && t.group_id === created.group_id));
         return exists ? prev : [...prev, created];
@@ -154,6 +184,7 @@ const GroupExamsListModal = ({
       setNewExamName('');
       setSelectedExamType('');
       setCustomExamName('');
+      setCompletedTasks(new Set());
       setShowAddForm(false);
       
       // Автоматически выбираем только что созданный тип экзамена
@@ -165,7 +196,7 @@ const GroupExamsListModal = ({
     } finally {
       setAddingType(false);
     }
-  }, [makeRequest, selectedExamType, customExamName, newExamName, showNotification, group, onSelectExam]);
+  }, [makeRequest, selectedExamType, customExamName, newExamName, showNotification, group, onSelectExam, completedTasks]);
 
   // Удаление всех экзаменов определенного типа
   const handleDeleteExamType = useCallback(async (typeId, e) => {
@@ -226,24 +257,6 @@ const GroupExamsListModal = ({
           <button onClick={onClose} className="close-btn">×</button>
         </div>
 
-        <div className="exams-list-header">
-          <h3>📋 Список экзаменов</h3>
-          <button 
-            onClick={() => {
-              setShowAddForm(!showAddForm);
-              if (showAddForm) {
-                // Сбрасываем форму при закрытии
-                setSelectedExamType('');
-                setCustomExamName('');
-                setNewExamName('');
-              }
-            }}
-            className="btn btn-outline btn-sm"
-          >
-            {showAddForm ? 'Отмена' : '➕ Добавить тип экзамена'}
-          </button>
-        </div>
-
         {showAddForm && (
           <form onSubmit={handleAddExamType} className="add-exam-type-form">
             <div className="add-exam-type-form-row">
@@ -287,6 +300,33 @@ const GroupExamsListModal = ({
                 />
               </div>
             )}
+
+            {/* Выбор пройденных заданий */}
+            {tasksCount > 0 && (selectedExamType || customExamName.trim()) && (
+              <div className="completed-tasks-section">
+                <label className="completed-tasks-label">
+                  Пройденные задания ({completedTasks.size} из {tasksCount}):
+                </label>
+                <div className="completed-tasks-grid">
+                  {Array.from({ length: tasksCount }, (_, i) => {
+                    const taskNumber = i + 1;
+                    const taskDisplayNumber = formatTaskNumber(i, mainSubject, tasksCount);
+                    const isCompleted = completedTasks.has(taskNumber);
+                    return (
+                      <button
+                        key={taskNumber}
+                        type="button"
+                        onClick={() => handleTaskToggle(taskNumber)}
+                        className={`task-circle ${isCompleted ? 'task-completed' : ''}`}
+                        title={`Задание ${taskNumber}`}
+                      >
+                        {taskDisplayNumber}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </form>
         )}
 
@@ -311,7 +351,7 @@ const GroupExamsListModal = ({
                     onClick={() => onSelectExam(typeId)}
                   >
                     <div className="exam-title-header">
-                      <h4 style={{ flex: 1 }}>
+                      <h4 style={{ flex: 1, textAlign: "center" }}>
                         {examTypeName}
                       </h4>
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -339,6 +379,25 @@ const GroupExamsListModal = ({
               })}
             </div>
           )}
+        </div>
+
+        {/* Кнопка добавления типа экзамена под списком */}
+        <div style={{ marginTop: '20px', marginBottom: '20px',display: 'flex', justifyContent: 'center' }}>
+          <button 
+            onClick={() => {
+              setShowAddForm(!showAddForm);
+              if (showAddForm) {
+                // Сбрасываем форму при закрытии
+                setSelectedExamType('');
+                setCustomExamName('');
+                setNewExamName('');
+                setCompletedTasks(new Set());
+              }
+            }}
+            className="btn btn-success"
+          >
+            {showAddForm ? 'Отмена' : '➕ Добавить экзамен'}
+          </button>
         </div>
       </div>
     </Modal>

@@ -50,7 +50,11 @@ const GroupList = ({ showNotification, isAdmin = true }) => {
       ) : (
         <div className="groups-list">
           {groups.map(group => (
-            <div key={group.id} className="group-item">
+            <div 
+              key={group.id} 
+              className="group-item"
+              onClick={() => setSelectedGroup(group)}
+            >
               <div className="group-info">
                 <h3>{group.name}</h3>
                 <p className="group-teacher">👨‍🏫 {group.teacher_name || group.teacher || 'Не указан'}</p>
@@ -60,26 +64,22 @@ const GroupList = ({ showNotification, isAdmin = true }) => {
                 </p>
               </div>
               
-              <div className="group-actions">
-                <button 
-                  onClick={() => setSelectedGroup(group)}
-                  className="btn btn-primary"
-                >
-                  Открыть
-                </button>
-                <button 
-                  onClick={() => setEditingGroup(group)}
-                  className="btn btn-secondary"
-                >
-                  Редактировать
-                </button>
-                <button 
-                  onClick={() => handleDelete(group.id, group.name)}
-                  className="btn btn-danger"
-                >
-                  Удалить
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="group-actions" onClick={(e) => e.stopPropagation()}>
+                  <button 
+                    onClick={() => setEditingGroup(group)}
+                    className="btn btn-secondary"
+                  >
+                    Редактировать
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(group.id, group.name)}
+                    className="btn btn-danger"
+                  >
+                    Удалить
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

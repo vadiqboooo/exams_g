@@ -3,7 +3,8 @@ import axios from "axios";
 import Notification from "../components/common/Notification";
 import "./Login.css";
 
-const API_BASE = "http://127.0.0.1:8000";
+// Используем относительный путь для работы через nginx proxy в Docker
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 export default function Login({ showNotification }) {
   const [username, setUsername] = useState("");

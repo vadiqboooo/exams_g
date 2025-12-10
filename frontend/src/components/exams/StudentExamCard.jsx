@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useExams } from '../../hooks/useExams';
 import { SUBJECT_TASKS, getSubjectDisplayName } from '../../services/constants';
 import { calculateTotalScore } from '../../utils/calculations';
+import { validateTaskInput, formatTaskNumber } from '../../utils/helpers';
 
 const StudentExamCard = ({ student, subject, groupId, showNotification }) => {
   const { exams, updateExam, deleteExam, createExam } = useExams();
@@ -14,6 +15,14 @@ const StudentExamCard = ({ student, subject, groupId, showNotification }) => {
 
   const subjectConfig = SUBJECT_TASKS[subject];
   const tasksCount = subjectConfig?.tasks || 0;
+  
+  // Вычисляем максимальный балл за экзамен (сумма всех maxPerTask)
+  const maxScore = useMemo(() => {
+    if (!subjectConfig?.maxPerTask || subjectConfig.maxPerTask.length === 0) {
+      return tasksCount; // Если нет maxPerTask, возвращаем количество заданий
+    }
+    return subjectConfig.maxPerTask.reduce((sum, max) => sum + max, 0);
+  }, [subjectConfig, tasksCount]);
 
   const handleAddExam = async () => {
     try {
@@ -35,8 +44,14 @@ const StudentExamCard = ({ student, subject, groupId, showNotification }) => {
   const handleTaskUpdate = async (taskIndex, value) => {
     if (!studentExam) return;
 
+    // Получаем максимальный балл для этого задания
+    const maxScore = subjectConfig?.maxPerTask?.[taskIndex] || 1;
+    
+    // Валидируем ввод
+    const validatedValue = validateTaskInput(value, maxScore);
+
     const answers = studentExam.answer ? studentExam.answer.split(',') : [];
-    answers[taskIndex] = value;
+    answers[taskIndex] = validatedValue;
     
     try {
       await updateExam(studentExam.id, {
@@ -73,7 +88,17 @@ const StudentExamCard = ({ student, subject, groupId, showNotification }) => {
   const calculatePrimaryScore = () => {
     if (!studentExam?.answer) return 0;
     const answers = studentExam.answer.split(',').map(s => s.trim());
-    return answers.reduce((sum, ans) => sum + (ans !== '-' ? (parseInt(ans) || 0) : 0), 0);
+    const maxPerTask = subjectConfig?.maxPerTask;
+    
+    return answers.reduce((sum, ans, index) => {
+      if (ans === '-') return sum;
+      const score = parseInt(ans) || 0;
+      // Если есть maxPerTask, ограничиваем балл максимумом
+      if (maxPerTask && maxPerTask[index] !== undefined) {
+        return sum + Math.min(score, maxPerTask[index]);
+      }
+      return sum + score;
+    }, 0);
   };
 
   const primaryScore = calculatePrimaryScore();
@@ -103,6 +128,9 @@ const StudentExamCard = ({ student, subject, groupId, showNotification }) => {
         <div className="card-actions">
           <span className="total-score">
             Σ: {primaryScore}
+            {maxScore > 0 && (
+              <span className="score-max">/{maxScore}</span>
+            )}
             {finalScore !== primaryScore && (
               <span className="final-score"> ({finalScore})</span>
             )}
@@ -131,9 +159,11 @@ const StudentExamCard = ({ student, subject, groupId, showNotification }) => {
                             score >= maxScore ? '#e8f5e9' : 
                             '#fff3e0';
 
+              const taskDisplayNumber = formatTaskNumber(i, subject, tasksCount);
+              
               return (
                 <div key={i} className="task-item">
-                  <div className="task-number">{i + 1}</div>
+                  <div className="task-number">{taskDisplayNumber}</div>
                   <input
                     type="text"
                     maxLength="2"

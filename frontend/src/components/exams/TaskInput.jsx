@@ -1,7 +1,7 @@
 import React from 'react';
-import { validateTaskInput } from '../../utils/helpers';
+import { validateTaskInput, formatTaskNumber } from '../../utils/helpers';
 
-const TaskInput = ({ index, value, maxScore, onChange }) => {
+const TaskInput = ({ index, value, maxScore, onChange, subject, totalTasks }) => {
   const handleChange = (e) => {
     const validatedValue = validateTaskInput(e.target.value, maxScore);
     onChange(validatedValue);
@@ -15,9 +15,11 @@ const TaskInput = ({ index, value, maxScore, onChange }) => {
     return '#fff3e0';
   };
 
+  const taskDisplayNumber = formatTaskNumber(index, subject, totalTasks);
+  
   return (
     <div className="task-input-wrapper">
-      <div className="task-number">{index + 1}</div>
+      <div className="task-number">{taskDisplayNumber}</div>
       <input
         type="text"
         value={value}

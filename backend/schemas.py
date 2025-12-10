@@ -97,6 +97,7 @@ class ExamWithStudentResponse(ExamResponse):
 class ExamTypeBase(BaseModel):
     name: str
     group_id: int
+    completed_tasks: Optional[List[int]] = None  # Массив номеров пройденных заданий
 
 
 class ExamTypeCreate(ExamTypeBase):
@@ -108,6 +109,15 @@ class ExamTypeResponse(ExamTypeBase):
 
     class Config:
         from_attributes = True
+    
+    def dict(self, **kwargs):
+        """Переопределяем dict, чтобы всегда включать completed_tasks"""
+        data = super().dict(**kwargs)
+        # Убеждаемся, что completed_tasks всегда присутствует в ответе
+        if 'completed_tasks' not in data or data.get('completed_tasks') is None:
+            # Если completed_tasks отсутствует или None, устанавливаем его из объекта
+            data['completed_tasks'] = self.completed_tasks
+        return data
 
 class StudentWithExamsResponse(StudentResponse):
     exams: List[ExamResponse] = []
@@ -161,18 +171,56 @@ class GroupResponse(BaseModel):
     @classmethod
     def from_orm_with_teacher(cls, obj):
         """Создает GroupResponse с информацией об учителе"""
-        data = {
-            'id': obj.id,
-            'name': obj.name,
-            'school': obj.school,
-            'exam_type': obj.exam_type,
-            'subject': obj.subject,
-            'teacher_id': obj.teacher_id,
-            'teacher_name': obj.teacher.teacher_name if obj.teacher else None,
-            'schedule': obj.schedule,
-            'students': [StudentResponse.model_validate(s) for s in obj.students] if obj.students else []
-        }
-        return cls(**data)
+        try:
+            # Безопасное получение teacher_name
+            teacher_name = None
+            if hasattr(obj, 'teacher') and obj.teacher is not None:
+                teacher_name = getattr(obj.teacher, 'teacher_name', None) or getattr(obj.teacher, 'username', None)
+            
+            # Безопасное получение students - используем простой подход
+            students = []
+            if hasattr(obj, 'students') and obj.students:
+                for s in obj.students:
+                    try:
+                        # Пробуем разные способы создания StudentResponse
+                        if hasattr(StudentResponse, 'model_validate'):
+                            students.append(StudentResponse.model_validate(s))
+                        elif hasattr(StudentResponse, 'from_orm'):
+                            students.append(StudentResponse.from_orm(s))
+                        else:
+                            # Используем конструктор напрямую
+                            student_dict = {
+                                'id': s.id,
+                                'fio': s.fio,
+                                'phone': getattr(s, 'phone', None),
+                                'admin_comment': getattr(s, 'admin_comment', None),
+                                'parent_contact_status': getattr(s, 'parent_contact_status', None)
+                            }
+                            students.append(StudentResponse(**student_dict))
+                    except Exception as e:
+                        print(f"Error creating StudentResponse for student {s.id}: {e}")
+                        # Пропускаем проблемного студента, но продолжаем
+                        continue
+            
+            data = {
+                'id': obj.id,
+                'name': obj.name,
+                'school': getattr(obj, 'school', None),
+                'exam_type': getattr(obj, 'exam_type', None),
+                'subject': getattr(obj, 'subject', None),
+                'teacher_id': obj.teacher_id,
+                'teacher_name': teacher_name,
+                'schedule': getattr(obj, 'schedule', None),
+                'students': students
+            }
+            return cls(**data)
+        except Exception as e:
+            print(f"Error in from_orm_with_teacher: {e}")
+            print(f"Object type: {type(obj)}")
+            print(f"Object attributes: {dir(obj)}")
+            import traceback
+            traceback.print_exc()
+            raise
 
 class GroupWithStudentsResponse(BaseModel):
     id: int

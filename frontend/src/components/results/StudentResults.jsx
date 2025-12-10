@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { getSubjectDisplayName } from '../../utils/helpers';
 import { calculateTotalScore } from '../../utils/calculations';
+import { SUBJECT_TASKS } from '../../services/constants';
 
 const StudentResults = ({ student, exams, groups }) => {
   const [expanded, setExpanded] = useState(false);
@@ -19,12 +20,21 @@ const StudentResults = ({ student, exams, groups }) => {
     group.students?.some(s => s.id === student.id)
   );
 
-  const calculatePrimaryScore = (answer) => {
+  const calculatePrimaryScore = (answer, subject) => {
     if (!answer) return 0;
     const answers = answer.split(',').map(s => s.trim());
-    return answers.reduce((sum, ans) => 
-      sum + (ans !== '-' ? (parseInt(ans) || 0) : 0), 0
-    );
+    const subjectConfig = SUBJECT_TASKS[subject];
+    const maxPerTask = subjectConfig?.maxPerTask;
+    
+    return answers.reduce((sum, ans, index) => {
+      if (ans === '-') return sum;
+      const score = parseInt(ans) || 0;
+      // Если есть maxPerTask, ограничиваем балл максимумом
+      if (maxPerTask && maxPerTask[index] !== undefined) {
+        return sum + Math.min(score, maxPerTask[index]);
+      }
+      return sum + score;
+    }, 0);
   };
 
   return (
@@ -71,8 +81,15 @@ const StudentResults = ({ student, exams, groups }) => {
               </h4>
               
               {subjectExams.map(exam => {
-                const primaryScore = calculatePrimaryScore(exam.answer);
+                const primaryScore = calculatePrimaryScore(exam.answer, subject);
                 const finalScore = calculateTotalScore(subject, exam.answer?.split(',') || []);
+                const subjectConfig = SUBJECT_TASKS[subject];
+                const maxScore = useMemo(() => {
+                  if (!subjectConfig?.maxPerTask || subjectConfig.maxPerTask.length === 0) {
+                    return subjectConfig?.tasks || 0;
+                  }
+                  return subjectConfig.maxPerTask.reduce((sum, max) => sum + max, 0);
+                }, [subjectConfig]);
                 
                 return (
                   <div key={exam.id} className="exam-result">
@@ -81,6 +98,9 @@ const StudentResults = ({ student, exams, groups }) => {
                       <div className="exam-scores">
                         <span className="primary-score">
                           Первичный: {primaryScore}
+                          {maxScore > 0 && (
+                            <span className="score-max">/{maxScore}</span>
+                          )}
                         </span>
                         {primaryScore !== finalScore && (
                           <span className="final-score">

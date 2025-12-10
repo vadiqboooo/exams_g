@@ -21,16 +21,15 @@ from auth import get_current_user
 app = FastAPI(title="Student Exam System", version="1.0.0")
 
 # CORS middleware должен быть добавлен ПЕРВЫМ, до всех остальных middleware и роутеров
+# Получаем разрешенные источники из переменных окружения или используем значения по умолчанию
+allowed_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,http://localhost"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -248,7 +247,28 @@ async def create_exam_type(
     if not exam_type.name.strip():
         raise HTTPException(status_code=400, detail="Название типа экзамена не может быть пустым")
     try:
-        return await crud.create_exam_type(db, exam_type.name.strip(), exam_type.group_id)
+        # Логируем полученные данные для отладки
+        import json
+        print(f"API: Creating exam type: name={exam_type.name}, group_id={exam_type.group_id}, completed_tasks={exam_type.completed_tasks}, type={type(exam_type.completed_tasks)}")
+        result = await crud.create_exam_type(
+            db, 
+            exam_type.name.strip(), 
+            exam_type.group_id,
+            completed_tasks=exam_type.completed_tasks
+        )
+        print(f"API: Created exam type: id={result.id}, completed_tasks={result.completed_tasks}, type={type(result.completed_tasks)}")
+        # Явно создаем ответ, чтобы убедиться, что completed_tasks включен
+        # В Pydantic v1 используем parse_obj или просто конструктор
+        response = schemas.ExamTypeResponse.parse_obj({
+            'id': result.id,
+            'name': result.name,
+            'group_id': result.group_id,
+            'completed_tasks': result.completed_tasks
+        })
+        # Проверяем, что completed_tasks включен в сериализацию
+        response_dict = response.dict(exclude_none=False)
+        print(f"API: Response dict: {response_dict}")
+        return response
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -271,21 +291,43 @@ async def delete_exam_type(exam_type_id: int, db: AsyncSession = Depends(get_db)
 # Group endpoints
 @app.post("/groups/", response_model=schemas.GroupResponse)
 async def create_group(group: schemas.GroupCreate, db: AsyncSession = Depends(get_db)):
-    # Проверяем, что учитель существует
-    teacher_query = await db.execute(select(Employee).where(Employee.id == group.teacher_id))
-    teacher = teacher_query.scalar_one_or_none()
-    if not teacher:
-        raise HTTPException(status_code=404, detail="Учитель не найден")
-    
-    created_group = await crud.create_group(db=db, group=group)
-    # Перезагружаем с учителем
-    result = await db.execute(
-        select(StudyGroup)
-        .options(selectinload(StudyGroup.teacher), selectinload(StudyGroup.students))
-        .where(StudyGroup.id == created_group.id)
-    )
-    group_with_teacher = result.scalar_one_or_none()
-    return schemas.GroupResponse.from_orm_with_teacher(group_with_teacher)
+    try:
+        # Проверяем, что учитель существует
+        teacher_query = await db.execute(select(Employee).where(Employee.id == group.teacher_id))
+        teacher = teacher_query.scalar_one_or_none()
+        if not teacher:
+            raise HTTPException(status_code=404, detail="Учитель не найден")
+        
+        print(f"Creating group: {group}")
+        created_group = await crud.create_group(db=db, group=group)
+        print(f"Group created with id: {created_group.id}")
+        
+        # Делаем commit после создания группы
+        await db.commit()
+        await db.refresh(created_group)
+        
+        # Перезагружаем с учителем - используем новый запрос в той же сессии
+        result = await db.execute(
+            select(StudyGroup)
+            .options(selectinload(StudyGroup.teacher), selectinload(StudyGroup.students))
+            .where(StudyGroup.id == created_group.id)
+        )
+        group_with_teacher = result.scalar_one_or_none()
+        
+        if not group_with_teacher:
+            raise HTTPException(status_code=404, detail="Созданная группа не найдена")
+        
+        print(f"Group loaded: id={group_with_teacher.id}, teacher={group_with_teacher.teacher}")
+        response = schemas.GroupResponse.from_orm_with_teacher(group_with_teacher)
+        print(f"Response created successfully")
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in create_group endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка создания группы: {str(e)}")
 
 @app.get("/groups/", response_model=List[schemas.GroupBase])
 async def read_groups(

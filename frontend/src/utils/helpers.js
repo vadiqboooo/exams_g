@@ -2,7 +2,9 @@ export const getSubjectDisplayName = (subject) => {
   const map = {
     'math_profile': 'Математика (профиль)',
     'math_base': 'Математика (база)',
+    'math_9': 'Математика',
     'rus': 'Русский язык',
+    'rus_9': 'Русский язык',
     'phys': 'Физика',
     'infa': 'Информатика',
     'chem': 'Химия',
@@ -53,4 +55,30 @@ export const getDeclension = (number, one, two, five) => {
   if (n1 > 1 && n1 < 5) return two;
   if (n1 === 1) return one;
   return five;
+};
+
+// Функция форматирования номера задания
+// Для rus_9 последние 5 заданий (14-18) отображаются как ГК1-ГК4 и ФК1
+export const formatTaskNumber = (taskIndex, subject, totalTasks) => {
+  // taskIndex - это индекс (0-based), нужно преобразовать в номер (1-based)
+  const taskNumber = taskIndex + 1;
+  
+  // Для rus_9 последние 5 заданий (14-18) имеют специальные названия
+  if (subject === 'rus_9') {
+    // Задания 14-18 отображаются как ГК1-ГК4 и ФК1
+    if (taskNumber === 14) {
+      return 'ГК1';
+    } else if (taskNumber === 15) {
+      return 'ГК2';
+    } else if (taskNumber === 16) {
+      return 'ГК3';
+    } else if (taskNumber === 17) {
+      return 'ГК4';
+    } else if (taskNumber === 18) {
+      return 'ФК1';
+    }
+  }
+  
+  // Для всех остальных случаев возвращаем обычный номер
+  return taskNumber.toString();
 };

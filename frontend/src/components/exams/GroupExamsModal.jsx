@@ -1,13 +1,14 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import axios from 'axios';
 import Modal from '../common/Modal';
-import { getSubjectDisplayName } from '../../utils/helpers';
+import { getSubjectDisplayName, validateTaskInput, formatTaskNumber } from '../../utils/helpers';
 import { SUBJECT_TASKS } from '../../services/constants';
 import { useApi } from '../../hooks/useApi';
 import './GroupExamsModal.css';
 import './GroupExamsDetailsModal.css';
 
-const API_BASE = 'http://127.0.0.1:8000';
+// Используем относительный путь для работы через nginx proxy в Docker
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 // Функция для получения заголовков с токеном
 const getAuthHeaders = () => {
@@ -45,6 +46,7 @@ const GroupExamsModal = ({
         const examTypes = await makeRequest('GET', `/exam-types/?group_id=${group.id}`);
         const foundType = examTypes.find(t => t.id === examTypeId);
         if (foundType) {
+          console.log('Loaded exam type:', foundType, 'completed_tasks:', foundType.completed_tasks);
           setExamType(foundType);
         }
       } catch (err) {
@@ -112,18 +114,33 @@ const GroupExamsModal = ({
   
   const tasksCount = mainSubjectConfig?.tasks || 0;
 
+  // Вычисляем максимальный балл за экзамен (сумма всех maxPerTask)
+  const maxScore = useMemo(() => {
+    if (!mainSubjectConfig?.maxPerTask || mainSubjectConfig.maxPerTask.length === 0) {
+      return tasksCount; // Если нет maxPerTask, возвращаем количество заданий
+    }
+    return mainSubjectConfig.maxPerTask.reduce((sum, max) => sum + max, 0);
+  }, [mainSubjectConfig, tasksCount]);
+
   // Получаем экзамен для конкретного студента
   const getExam = useCallback((studentId) => {
     return filteredExams.find(e => e.id_student === studentId) || null;
   }, [filteredExams]);
 
-  // Вычисляем первичный балл
+  // Вычисляем первичный балл с учетом максимальных баллов за задания
   const calculatePrimaryScore = (answerString) => {
     if (!answerString) return 0;
-    return answerString
-      .split(',')
-      .map(a => a.trim())
-      .reduce((sum, val) => sum + (val !== '-' ? Number(val) || 0 : 0), 0);
+    const answers = answerString.split(',').map(a => a.trim());
+    const maxPerTask = mainSubjectConfig?.maxPerTask
+    return answers.reduce((sum, val, index) => {
+      if (val === '-') return sum;
+      const score = Number(val) || 0;
+      // Если есть maxPerTask, ограничиваем балл максимумом
+      if (maxPerTask && maxPerTask[index] !== undefined) {
+        return sum + Math.min(score, maxPerTask[index]);
+      }
+      return sum + score;
+    }, 0);
   };
 
   // Функция обновления экзамена в локальном состоянии
@@ -157,11 +174,9 @@ const GroupExamsModal = ({
 
   // Обработка изменения ответа на задание
   const handleTaskChange = async (examId, index, value) => {
-    let clean = value.replace(/[^0-9-]/g, '');
-    if (clean === '--') clean = '-';
-
     const max = mainSubjectConfig?.maxPerTask?.[index] || 1;
-    if (clean !== '-' && Number(clean) > max) clean = String(max);
+    // Используем validateTaskInput для консистентной валидации
+    const clean = validateTaskInput(value, max);
 
     const exam = filteredExams.find(e => e.id === examId);
     if (!exam) return;
@@ -454,9 +469,9 @@ const GroupExamsModal = ({
                             <span className="primary-score-label">Первичный балл:</span>
                             <span className="primary-score-value">
                               <strong>{primaryScore}</strong>
-                              {tasksCount > 0 && (
+                              {maxScore > 0 && (
                                 <span className="score-max">
-                                  /{mainSubjectConfig?.maxScore || tasksCount}
+                                  /{maxScore}
                                 </span>
                               )}
                             </span>
@@ -491,22 +506,35 @@ const GroupExamsModal = ({
                           </div>
                           
                           <div className="tasks-grid">
-                            {Array.from({ length: tasksCount }).map((_, i) => (
-                              <div key={i} className="task-item">
-                                <div className="task-header">
-                                  <div className="task-number">{i + 1}</div>
+                            {Array.from({ length: tasksCount }).map((_, i) => {
+                              const taskNumber = i + 1;
+                              const taskDisplayNumber = formatTaskNumber(i, mainSubject, tasksCount);
+                              // Проверяем, является ли задание пройденным
+                              const completedTasks = examType?.completed_tasks || [];
+                              const isCompleted = Array.isArray(completedTasks) && completedTasks.includes(taskNumber);
+                              
+                              return (
+                                <div key={i} className="task-item">
+                                  <div className="task-header">
+                                    <div 
+                                      className={`task-number ${isCompleted ? 'task-completed' : ''}`}
+                                      title={`Задание ${taskNumber}`}
+                                    >
+                                      {taskDisplayNumber}
+                                    </div>
+                                    
+                                  </div>
+                                  <input
+                                    value={answers[i] != '-' ? answers[i] : ''}
+                                    maxLength={3}
+                                    onChange={(e) => handleTaskChange(exam.id, i, e.target.value)}
+                                    className="task-input"
+                                    placeholder="-"
+                                  />
                                   
                                 </div>
-                                <input
-                                  value={answers[i] != '-' ? answers[i] : ''}
-                                  maxLength={3}
-                                  onChange={(e) => handleTaskChange(exam.id, i, e.target.value)}
-                                  className="task-input"
-                                  placeholder="-"
-                                />
-                                
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                           
                          

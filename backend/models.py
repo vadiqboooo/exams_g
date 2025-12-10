@@ -53,6 +53,7 @@ class ExamType(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)  # Убрали unique, так как для разных групп могут быть одинаковые названия
     group_id = Column(Integer, ForeignKey('study_group.id'), nullable=False)
+    completed_tasks = Column(JSON, nullable=True)  # Массив номеров пройденных заданий, например [1, 2, 3, 5, 7]
 
     exams = relationship("Exam", back_populates="exam_type")
     group = relationship("StudyGroup", back_populates="exam_types")

@@ -37,6 +37,14 @@ const ExamForm = ({ exam = null, onClose, showNotification }) => {
 
   const subjectConfig = SUBJECT_TASKS[formData.subject];
   const tasksCount = subjectConfig?.tasks || 0;
+  
+  // Вычисляем максимальный балл за экзамен (сумма всех maxPerTask)
+  const maxScore = React.useMemo(() => {
+    if (!subjectConfig?.maxPerTask || subjectConfig.maxPerTask.length === 0) {
+      return tasksCount; // Если нет maxPerTask, возвращаем количество заданий
+    }
+    return subjectConfig.maxPerTask.reduce((sum, max) => sum + max, 0);
+  }, [subjectConfig, tasksCount]);
 
   const handleSubjectChange = (value) => {
     setFormData({
@@ -166,12 +174,24 @@ const ExamForm = ({ exam = null, onClose, showNotification }) => {
                   maxScore={subjectConfig.maxPerTask?.[i] || 1}
                   value={formData.answers[i] || ''}
                   onChange={(value) => handleTaskChange(i, value)}
+                  subject={formData.subject}
+                  totalTasks={tasksCount}
                 />
               ))}
             </div>
             <div className="primary-score">
-              Первичный балл: {formData.answers.reduce((sum, ans) => 
-                sum + (ans && ans !== '-' ? (parseInt(ans) || 0) : 0), 0
+              Первичный балл: {formData.answers.reduce((sum, ans, index) => {
+                if (!ans || ans === '-') return sum;
+                const score = parseInt(ans) || 0;
+                const taskMaxScore = subjectConfig?.maxPerTask?.[index];
+                // Если есть maxPerTask, ограничиваем балл максимумом
+                if (taskMaxScore !== undefined) {
+                  return sum + Math.min(score, taskMaxScore);
+                }
+                return sum + score;
+              }, 0)}
+              {maxScore > 0 && (
+                <span className="score-max">/{maxScore}</span>
               )}
             </div>
           </div>
