@@ -15,8 +15,8 @@ export default defineConfig({
   build: {
     // Увеличиваем лимит предупреждений для сборки
     chunkSizeWarningLimit: 1000,
-    // Минификация
-    minify: 'terser',
+    // Минификация использует esbuild (встроен в Vite, не требует дополнительных зависимостей)
+    minify: 'esbuild',
     // Обработка ошибок
     rollupOptions: {
       onwarn(warning, warn) {
