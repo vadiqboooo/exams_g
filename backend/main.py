@@ -16,6 +16,7 @@ from models import Base, Student, Exam, StudyGroup, Employee
 
 from auth_routes import router as auth_router
 from auth import get_current_user
+from telegram_routes import router as telegram_router
 
 
 app = FastAPI(title="Student Exam System", version="1.0.0")
@@ -24,7 +25,7 @@ app = FastAPI(title="Student Exam System", version="1.0.0")
 # Получаем разрешенные источники из переменных окружения или используем значения по умолчанию
 allowed_origins = os.getenv(
     "CORS_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,http://localhost"
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000,http://localhost,http://127.0.0.1"
 ).split(",")
 
 app.add_middleware(
@@ -40,6 +41,7 @@ os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(auth_router)
+app.include_router(telegram_router)
 
 @app.on_event("startup")
 async def startup_event():

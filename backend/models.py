@@ -1,6 +1,7 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Table, Text, JSON
+from sqlalchemy import Column, Integer, String, ForeignKey, Table, Text, JSON, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
+from datetime import datetime
 
 Base = declarative_base()
 
@@ -43,8 +44,14 @@ class Student(Base):
     admin_comment = Column(Text, nullable=True)
     parent_contact_status = Column(String(50), nullable=True)  # 'informed', 'callback', 'no_answer'
     
+    # Поля для телеграм-бота
+    user_id = Column(Integer, nullable=True, index=True)  # Telegram user ID
+    class_num = Column(Integer, nullable=True)  # Класс ученика (9, 10, 11)
+    confirmed_at = Column(DateTime, nullable=True)  # Время подтверждения регистрации в боте
+    
     exams = relationship("Exam", back_populates="student")
     groups = relationship("StudyGroup", secondary=group_student_association, back_populates="students")
+    exam_registrations = relationship("ExamRegistration", back_populates="student")
 
 
 class ExamType(Base):
@@ -80,4 +87,19 @@ class Employee(Base):
     role = Column(String)  # "admin" or "teacher"
     teacher_name = Column(String, nullable=True)
     
-    groups = relationship("StudyGroup", back_populates="teacher") 
+    groups = relationship("StudyGroup", back_populates="teacher")
+
+class ExamRegistration(Base):
+    """Запись на зимний пробник"""
+    __tablename__ = 'exam_registration'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey('student.id'), nullable=False)
+    subject = Column(String(100), nullable=False)  # Предмет экзамена
+    exam_date = Column(DateTime, nullable=False)  # Дата и время экзамена
+    exam_time = Column(String(10), nullable=False)  # "9:00" или "12:00"
+    created_at = Column(DateTime, default=datetime.utcnow)
+    confirmed = Column(Boolean, default=False)  # Подтверждение участия
+    confirmed_at = Column(DateTime, nullable=True)  # Когда подтвердил участие
+    
+    student = relationship("Student", back_populates="exam_registrations") 

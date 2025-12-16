@@ -95,3 +95,5 @@ async def fix_study_group_table():
 if __name__ == "__main__":
     asyncio.run(fix_study_group_table())
 
+
+

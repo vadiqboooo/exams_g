@@ -5,6 +5,8 @@ import re
 class StudentBase(BaseModel):
     fio: str
     phone: Optional[str] = None
+    user_id: Optional[int] = None  # Telegram user ID
+    class_num: Optional[int] = None  # Класс ученика (9, 10, 11)
 
 class StudentCreate(StudentBase):
     pass
@@ -14,12 +16,21 @@ class StudentUpdate(BaseModel):
     phone: Optional[str] = None
     admin_comment: Optional[str] = None
     parent_contact_status: Optional[str] = None
+    user_id: Optional[int] = None
+    class_num: Optional[int] = None
     
     @field_validator('parent_contact_status')
     @classmethod
     def validate_status(cls, v):
         if v is not None and v not in ['informed', 'callback', 'no_answer', '']:
             raise ValueError('Статус должен быть: informed, callback или no_answer')
+        return v
+    
+    @field_validator('class_num')
+    @classmethod
+    def validate_class(cls, v):
+        if v is not None and v not in [9, 10, 11]:
+            raise ValueError('Класс должен быть: 9, 10 или 11')
         return v
 
 class StudentResponse(StudentBase):
@@ -316,3 +327,40 @@ class LoginResponse(BaseModel):
     access_token: str
     role: str
     teacher_name: str
+
+# ==== СХЕМЫ ДЛЯ ТЕЛЕГРАМ-БОТА ====
+
+class ExamRegistrationCreate(BaseModel):
+    student_id: int
+    subject: str
+    exam_date: str  # Дата в формате "YYYY-MM-DD"
+    exam_time: str  # "9:00" или "12:00"
+
+class ExamRegistrationResponse(BaseModel):
+    id: int
+    student_id: int
+    subject: str
+    exam_date: str
+    exam_time: str
+    created_at: str
+    confirmed: bool
+    confirmed_at: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+class StudentSearchRequest(BaseModel):
+    fio: str  # Фамилия и имя
+
+class StudentSearchResponse(BaseModel):
+    id: int
+    fio: str
+    groups: List[str]  # Список названий групп
+    class_num: Optional[int] = None
+
+class StudentConfirmRequest(BaseModel):
+    student_id: int
+    user_id: int  # Telegram user ID
+
+class SubjectListResponse(BaseModel):
+    subjects: List[str]  # Список предметов для ОГЭ или ЕГЭ

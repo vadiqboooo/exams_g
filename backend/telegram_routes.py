@@ -1,0 +1,512 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy import func
+from typing import List
+from datetime import datetime, timedelta
+import re
+
+from database import get_db
+from models import Student, StudyGroup, ExamRegistration, group_student_association
+import schemas
+
+router = APIRouter(prefix="/telegram", tags=["telegram"])
+
+# Предметы для ОГЭ и ЕГЭ
+OGE_SUBJECTS = [
+    "Русский язык",
+    "Математика",
+    "Обществознание",
+    "История",
+    "Биология",
+    "Химия",
+    "Физика",
+    "Информатика",
+    "География",
+    "Английский язык",
+    "Литература"
+]
+
+EGE_SUBJECTS = [
+    "Русский язык",
+    "Математика (профиль)",
+    "Математика (база)",
+    "Обществознание",
+    "История",
+    "Биология",
+    "Химия",
+    "Физика",
+    "Информатика",
+    "География",
+    "Английский язык",
+    "Литература"
+]
+
+@router.get("/student-by-user-id/{user_id}", response_model=schemas.StudentSearchResponse)
+async def get_student_by_user_id(
+    user_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Получение студента по Telegram user_id"""
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.groups))
+        .where(Student.user_id == user_id)
+    )
+    student = result.scalar_one_or_none()
+    
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    
+    # Получаем названия групп
+    group_names = [group.name for group in student.groups]
+    
+    # Обрабатываем class_num: преобразуем пустые строки в None
+    class_num = student.class_num
+    if class_num == '' or class_num is None:
+        class_num = None
+    elif isinstance(class_num, str):
+        # Если это строка, пытаемся преобразовать в int
+        try:
+            class_num = int(class_num) if class_num.strip() else None
+        except (ValueError, AttributeError):
+            class_num = None
+    
+    return schemas.StudentSearchResponse(
+        id=student.id,
+        fio=student.fio,
+        groups=group_names,
+        class_num=class_num
+    )
+
+@router.post("/search-student", response_model=List[schemas.StudentSearchResponse])
+async def search_student(
+    request: schemas.StudentSearchRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Поиск ученика по ФИО"""
+    # Ищем студентов по ФИО (без учета регистра)
+    # Для SQLite используем func.lower() вместо ilike
+    fio_search = request.fio.strip()
+    
+    if not fio_search:
+        return []
+    
+    # Нормализуем поисковый запрос (убираем лишние пробелы)
+    fio_search_normalized = " ".join(fio_search.split())
+    fio_lower = fio_search_normalized.lower()
+    
+    # Создаем паттерн для поиска (поддерживаем поиск по части имени)
+    search_pattern = f"%{fio_lower}%"
+    
+    # Получаем всех студентов с группами
+    # Используем try-except для обработки ошибок при загрузке данных с пустыми строками в полях DateTime
+    try:
+        result = await db.execute(
+            select(Student)
+            .options(selectinload(Student.groups))
+        )
+        all_students = result.scalars().all()
+    except Exception as e:
+        # Если произошла ошибка при загрузке (например, пустые строки в полях DateTime),
+        # пытаемся загрузить без selectinload и обрабатываем ошибки для каждого студента
+        result = await db.execute(select(Student))
+        all_students_raw = result.scalars().all()
+        all_students = []
+        for student in all_students_raw:
+            try:
+                # Пытаемся загрузить группы для каждого студента отдельно
+                await db.refresh(student, ["groups"])
+                all_students.append(student)
+            except Exception:
+                # Если не удалось загрузить группы, добавляем студента без групп
+                all_students.append(student)
+    
+    # Фильтруем студентов: сначала по фамилии, потом по имени
+    # ФИО в базе: "Фамилия Имя"
+    search_words = fio_lower.split()
+    matched_students = []
+    
+    for student in all_students:
+        student_fio_normalized = " ".join(student.fio.strip().split())
+        student_fio_lower = student_fio_normalized.lower()
+        student_fio_parts = student_fio_lower.split()
+        
+        if len(student_fio_parts) < 2:
+            # Если в базе нет фамилии и имени, пропускаем
+            continue
+        
+        student_surname = student_fio_parts[0]  # Фамилия
+        student_name = student_fio_parts[1] if len(student_fio_parts) > 1 else ""  # Имя
+        
+        # Приоритет поиска:
+        # 1. Точное совпадение ФИО
+        # 2. Поиск по фамилии (начинается с фамилии)
+        # 3. Поиск по имени (если фамилия не подошла)
+        matches = False
+        match_priority = 999  # Чем меньше, тем выше приоритет
+        
+        if student_fio_lower == fio_lower:
+            # Точное совпадение
+            matches = True
+            match_priority = 0
+        elif len(search_words) >= 1:
+            # Ищем по первому слову (фамилия)
+            search_surname = search_words[0]
+            if student_surname.startswith(search_surname) or search_surname in student_surname:
+                matches = True
+                match_priority = 1
+            elif len(search_words) >= 2:
+                # Если есть второе слово, ищем по имени
+                search_name = search_words[1]
+                if student_name.startswith(search_name) or search_name in student_name:
+                    matches = True
+                    match_priority = 2
+        
+        if matches:
+            matched_students.append((student, match_priority))
+    
+    # Сортируем по приоритету, потом по ФИО
+    matched_students.sort(key=lambda x: (x[1], x[0].fio))
+    matched_students = [student for student, _ in matched_students]
+    
+    response = []
+    is_single_result = len(matched_students) == 1
+    
+    for student in matched_students:
+        # Получаем названия групп только если найден один студент
+        group_names = []
+        if is_single_result:
+            group_names = [group.name for group in student.groups]
+        
+        # Обрабатываем class_num: преобразуем пустые строки в None
+        class_num = student.class_num
+        if class_num == '' or class_num is None:
+            class_num = None
+        elif isinstance(class_num, str):
+            # Если это строка, пытаемся преобразовать в int
+            try:
+                class_num = int(class_num) if class_num.strip() else None
+            except (ValueError, AttributeError):
+                class_num = None
+        
+        response.append(schemas.StudentSearchResponse(
+            id=student.id,
+            fio=student.fio,
+            groups=group_names,
+            class_num=class_num
+        ))
+    
+    return response
+
+@router.get("/debug/all-students")
+async def debug_all_students(
+    db: AsyncSession = Depends(get_db)
+):
+    """Отладочный endpoint для просмотра всех студентов в базе"""
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.groups))
+    )
+    students = result.scalars().all()
+    
+    response = []
+    for student in students:
+        group_names = [group.name for group in student.groups]
+        response.append({
+            "id": student.id,
+            "fio": student.fio,
+            "fio_lower": student.fio.lower(),
+            "groups": group_names,
+            "class_num": student.class_num
+        })
+    
+    return {"total": len(response), "students": response}
+
+@router.post("/confirm-student")
+async def confirm_student(
+    request: schemas.StudentConfirmRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Подтверждение ученика и привязка Telegram ID"""
+    result = await db.execute(
+        select(Student).where(Student.id == request.student_id)
+    )
+    student = result.scalar_one_or_none()
+    
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    
+    # Обновляем user_id и время подтверждения
+    student.user_id = request.user_id
+    student.confirmed_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(student)
+    
+    return {"message": "Ученик подтвержден", "class_num": student.class_num}
+
+@router.get("/subjects/{class_num}", response_model=schemas.SubjectListResponse)
+async def get_subjects(class_num: int, db: AsyncSession = Depends(get_db)):
+    """Получение списка предметов в зависимости от класса"""
+    if class_num == 9:
+        return schemas.SubjectListResponse(subjects=OGE_SUBJECTS)
+    elif class_num in [10, 11]:
+        return schemas.SubjectListResponse(subjects=EGE_SUBJECTS)
+    else:
+        raise HTTPException(status_code=400, detail="Некорректный класс")
+
+@router.post("/register-exam", response_model=schemas.ExamRegistrationResponse)
+async def register_exam(
+    registration: schemas.ExamRegistrationCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Запись на экзамен"""
+    # Проверяем, что студент существует
+    result = await db.execute(
+        select(Student).where(Student.id == registration.student_id)
+    )
+    student = result.scalar_one_or_none()
+    
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    
+    # Проверяем, что ученик не записался уже на 4 экзамена
+    existing_registrations = await db.execute(
+        select(ExamRegistration).where(ExamRegistration.student_id == registration.student_id)
+    )
+    existing_count = len(existing_registrations.scalars().all())
+    
+    if existing_count >= 4:
+        raise HTTPException(status_code=400, detail="Можно записаться максимум на 4 экзамена")
+    
+    # Парсим дату и время
+    try:
+        exam_date_obj = datetime.strptime(registration.exam_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Некорректный формат даты. Используйте YYYY-MM-DD")
+    
+    # Проверяем количество записей на этот день и время
+    count_result = await db.execute(
+        select(ExamRegistration).where(
+            ExamRegistration.exam_date == exam_date_obj,
+            ExamRegistration.exam_time == registration.exam_time
+        )
+    )
+    registrations_count = len(count_result.scalars().all())
+    
+    if registrations_count >= 45:
+        raise HTTPException(status_code=400, detail="На это время нет свободных мест")
+    
+    # Проверяем, что ученик не записался уже на этот же экзамен
+    duplicate_result = await db.execute(
+        select(ExamRegistration).where(
+            ExamRegistration.student_id == registration.student_id,
+            ExamRegistration.subject == registration.subject,
+            ExamRegistration.exam_date == exam_date_obj,
+            ExamRegistration.exam_time == registration.exam_time
+        )
+    )
+    if duplicate_result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Вы уже записаны на этот экзамен")
+    
+    # Создаем запись (exam_date хранится как DateTime, но используем только дату)
+    exam_datetime = datetime.combine(exam_date_obj, datetime.min.time())
+    db_registration = ExamRegistration(
+        student_id=registration.student_id,
+        subject=registration.subject,
+        exam_date=exam_datetime,
+        exam_time=registration.exam_time
+    )
+    db.add(db_registration)
+    await db.commit()
+    await db.refresh(db_registration)
+    
+    return schemas.ExamRegistrationResponse(
+        id=db_registration.id,
+        student_id=db_registration.student_id,
+        subject=db_registration.subject,
+        exam_date=db_registration.exam_date.strftime("%Y-%m-%d"),
+        exam_time=db_registration.exam_time,
+        created_at=db_registration.created_at.isoformat() if db_registration.created_at else "",
+        confirmed=db_registration.confirmed,
+        confirmed_at=db_registration.confirmed_at.isoformat() if db_registration.confirmed_at else None
+    )
+
+@router.get("/available-slots/{date}")
+async def get_available_slots(date: str, db: AsyncSession = Depends(get_db)):
+    """Получение доступных слотов на дату"""
+    try:
+        exam_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Некорректный формат даты")
+    
+    times = ["9:00", "12:00"]
+    slots = {}
+    
+    for time in times:
+        # Создаем datetime для сравнения
+        exam_datetime = datetime.combine(exam_date, datetime.min.time())
+        count_result = await db.execute(
+            select(ExamRegistration).where(
+                ExamRegistration.exam_date == exam_datetime,
+                ExamRegistration.exam_time == time
+            )
+        )
+        count = len(count_result.scalars().all())
+        slots[time] = {
+            "registered": count,
+            "available": max(0, 45 - count)
+        }
+    
+    return {"date": date, "slots": slots}
+
+@router.get("/student-registrations/{student_id}", response_model=List[schemas.ExamRegistrationResponse])
+async def get_student_registrations(
+    student_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Получение всех записей ученика"""
+    result = await db.execute(
+        select(ExamRegistration).where(ExamRegistration.student_id == student_id)
+    )
+    registrations = result.scalars().all()
+    
+    result_list = []
+    for r in registrations:
+        # Безопасная обработка exam_date
+        exam_date_str = ""
+        if r.exam_date:
+            if isinstance(r.exam_date, datetime):
+                exam_date_str = r.exam_date.date().strftime("%Y-%m-%d")
+            elif isinstance(r.exam_date, str) and r.exam_date.strip():
+                # Если это строка, пытаемся преобразовать
+                try:
+                    exam_date_str = datetime.fromisoformat(r.exam_date).date().strftime("%Y-%m-%d")
+                except (ValueError, AttributeError):
+                    exam_date_str = ""
+        
+        result_list.append(schemas.ExamRegistrationResponse(
+            id=r.id,
+            student_id=r.student_id,
+            subject=r.subject,
+            exam_date=exam_date_str,
+            exam_time=r.exam_time,
+            created_at=r.created_at.isoformat() if r.created_at else "",
+            confirmed=r.confirmed,
+            confirmed_at=r.confirmed_at.isoformat() if r.confirmed_at else None
+        ))
+    
+    return result_list
+
+@router.post("/confirm-participation/{registration_id}")
+async def confirm_participation(
+    registration_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Подтверждение участия в экзамене"""
+    result = await db.execute(
+        select(ExamRegistration).where(ExamRegistration.id == registration_id)
+    )
+    registration = result.scalar_one_or_none()
+    
+    if not registration:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    
+    registration.confirmed = True
+    registration.confirmed_at = datetime.utcnow()
+    await db.commit()
+    
+    return {"message": "Участие подтверждено"}
+
+@router.get("/pending-notifications")
+async def get_pending_notifications(db: AsyncSession = Depends(get_db)):
+    """Получение списка уведомлений для отправки"""
+    now = datetime.utcnow()
+    
+    # Уведомления через 24 часа после подтверждения, но без записи
+    # Находим студентов, которые подтвердили себя более 24 часов назад, но не записались на экзамен
+    confirmed_students = await db.execute(
+        select(Student).where(
+            Student.user_id.isnot(None),
+            Student.user_id > 0,
+            Student.confirmed_at.isnot(None),
+            Student.confirmed_at <= now - timedelta(hours=24)
+        )
+    )
+    students = confirmed_students.scalars().all()
+    
+    notifications_24h = []
+    for student in students:
+        # Проверяем, есть ли у студента записи
+        registrations_result = await db.execute(
+            select(ExamRegistration).where(ExamRegistration.student_id == student.id)
+        )
+        registrations = registrations_result.scalars().all()
+        
+        # Если нет записей и прошло более 24 часов с подтверждения
+        if not registrations:
+            notifications_24h.append({
+                "user_id": student.user_id,
+                "type": "reminder_24h",
+                "message": "Вы подтвердили регистрацию более 24 часов назад, но еще не записались на экзамен. Пожалуйста, завершите регистрацию."
+            })
+    
+    # Уведомления за 3 дня до экзамена
+    three_days_later = now + timedelta(days=3)
+    three_days_date = three_days_later.date()
+    registrations_3d = await db.execute(
+        select(ExamRegistration)
+        .options(selectinload(ExamRegistration.student))
+        .where(
+            ExamRegistration.exam_date >= datetime.combine(three_days_date - timedelta(days=1), datetime.min.time()),
+            ExamRegistration.exam_date <= datetime.combine(three_days_date, datetime.min.time()),
+            ExamRegistration.confirmed == False
+        )
+    )
+    
+    notifications_3d = []
+    for reg in registrations_3d.scalars().all():
+        if reg.student and reg.student.user_id:
+            notifications_3d.append({
+                "user_id": reg.student.user_id,
+                "type": "reminder_3d",
+                "registration_id": reg.id,
+                "subject": reg.subject,
+                "exam_date": reg.exam_date.strftime("%d.%m.%Y"),
+                "exam_time": reg.exam_time,
+                "message": f"Через 3 дня у вас экзамен по {reg.subject} ({reg.exam_date.strftime('%d.%m.%Y')} в {reg.exam_time}). Подтвердите участие."
+            })
+    
+    # Уведомления за 1 день до экзамена
+    one_day_later = now + timedelta(days=1)
+    one_day_date = one_day_later.date()
+    registrations_1d = await db.execute(
+        select(ExamRegistration)
+        .options(selectinload(ExamRegistration.student))
+        .where(
+            ExamRegistration.exam_date >= datetime.combine(one_day_date, datetime.min.time()),
+            ExamRegistration.exam_date <= datetime.combine(one_day_date + timedelta(days=1), datetime.min.time()),
+            ExamRegistration.confirmed == False
+        )
+    )
+    
+    notifications_1d = []
+    for reg in registrations_1d.scalars().all():
+        if reg.student and reg.student.user_id:
+            notifications_1d.append({
+                "user_id": reg.student.user_id,
+                "type": "reminder_1d",
+                "registration_id": reg.id,
+                "subject": reg.subject,
+                "exam_date": reg.exam_date.strftime("%d.%m.%Y"),
+                "exam_time": reg.exam_time,
+                "message": f"Завтра у вас экзамен по {reg.subject} в {reg.exam_time}. Подтвердите участие."
+            })
+    
+    return {
+        "reminder_24h": notifications_24h,
+        "reminder_3d": notifications_3d,
+        "reminder_1d": notifications_1d
+    }
+

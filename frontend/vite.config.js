@@ -12,6 +12,39 @@ export default defineConfig({
       }
     })
   ],
+  server: {
+    proxy: {
+      // Проксирование всех API запросов к backend
+      '/auth': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/students': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/exams': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/groups': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/teachers': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/exam-types': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/telegram': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    }
+  },
   build: {
     // Увеличиваем лимит предупреждений для сборки
     chunkSizeWarningLimit: 1000,
