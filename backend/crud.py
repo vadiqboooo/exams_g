@@ -9,6 +9,13 @@ import json
 # ==================== STUDENT CRUD ====================
 
 async def create_student(db: AsyncSession, student: StudentCreate):
+    # Проверяем, существует ли уже студент с таким ФИО
+    existing_student = await db.execute(
+        select(Student).where(Student.fio == student.fio)
+    )
+    if existing_student.scalar_one_or_none():
+        raise ValueError(f"Студент с именем '{student.fio}' уже существует")
+    
     db_student = Student(**student.dict())
     db.add(db_student)
     await db.commit()
@@ -55,6 +62,18 @@ async def update_student(db: AsyncSession, student_id: int, student_update: Stud
     await db.refresh(db_student)
     return db_student
 
+async def delete_student(db: AsyncSession, student_id: int):
+    """Удаление студента"""
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    db_student = result.scalar_one_or_none()
+    
+    if db_student is None:
+        return False
+    
+    await db.delete(db_student)
+    await db.commit()
+    return True
+
 # ==================== EXAM CRUD ====================
 
 async def create_exam(db: AsyncSession, exam: ExamCreate):
@@ -72,10 +91,16 @@ async def create_exam(db: AsyncSession, exam: ExamCreate):
     if not student:
         raise ValueError("Студент не найден")
 
+    # Сбрасываем статус контакта с родителями при добавлении нового экзамена
+    # Объект уже в сессии, поэтому изменения сохранятся автоматически
+    student.parent_contact_status = None
+
     db_exam = Exam(**exam.dict())
     db.add(db_exam)
     await db.commit()
     await db.refresh(db_exam)
+    # Обновляем студента, чтобы изменения статуса сохранились
+    await db.refresh(student)
     return db_exam
 
 async def get_exams(db: AsyncSession, skip: int = 0, limit: int = 100):

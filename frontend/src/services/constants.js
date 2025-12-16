@@ -29,7 +29,8 @@ export const SUBJECT_OPTIONS = [
   { value: 'custom', label: 'Другое' }
 ];
 
-export const API_BASE = '';
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || 
+                         (import.meta.env.DEV ? 'http://127.0.0.1:8000' : '');
 
 export function getSubjectDisplayName(subject) {
   const map = {

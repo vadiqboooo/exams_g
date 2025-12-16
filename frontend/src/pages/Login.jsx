@@ -4,7 +4,9 @@ import Notification from "../components/common/Notification";
 import "./Login.css";
 
 // Используем относительный путь для работы через nginx proxy в Docker
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+// В development используем локальный сервер
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 
+                 (import.meta.env.DEV ? 'http://127.0.0.1:8000' : '');
 
 export default function Login({ showNotification }) {
   const [username, setUsername] = useState("");

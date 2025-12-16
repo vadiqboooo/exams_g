@@ -4,11 +4,14 @@ import Modal from '../common/Modal';
 import { getSubjectDisplayName, validateTaskInput, formatTaskNumber } from '../../utils/helpers';
 import { SUBJECT_TASKS } from '../../services/constants';
 import { useApi } from '../../hooks/useApi';
+import { useStudents } from '../../hooks/useStudents';
 import './GroupExamsModal.css';
 import './GroupExamsDetailsModal.css';
 
 // Используем относительный путь для работы через nginx proxy в Docker
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+// В development используем локальный сервер
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 
+                 (import.meta.env.DEV ? 'http://127.0.0.1:8000' : '');
 
 // Функция для получения заголовков с токеном
 const getAuthHeaders = () => {
@@ -30,6 +33,7 @@ const GroupExamsModal = ({
   const [hasChanges, setHasChanges] = useState(false);
   const [examType, setExamType] = useState(null);
   const { makeRequest } = useApi();
+  const { loadStudents } = useStudents();
   
   // Обновляем локальное состояние при изменении пропса
   useEffect(() => {
@@ -270,6 +274,13 @@ const GroupExamsModal = ({
         name: examTypeName || res.data.exam_type?.name || 'Экзамен'
       };
       addExamToState(examWithName);
+      
+      // Обновляем данные студентов, чтобы статус обновился
+      try {
+        await loadStudents();
+      } catch (err) {
+        console.error('Ошибка обновления студентов:', err);
+      }
       
       // Уведомляем об изменениях - это вызовет перезагрузку экзаменов в родительском компоненте
       if (onDataChanged) {
