@@ -6,13 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
+from datetime import datetime
 import os
 
 from database import get_db, create_tables
 import crud
 import schemas
 from schemas import GroupStudentsUpdate, GroupUpdate
-from models import Base, Student, Exam, StudyGroup, Employee
+from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration
 
 from auth_routes import router as auth_router
 from auth import get_current_user
@@ -20,6 +21,36 @@ from telegram_routes import router as telegram_router
 
 
 app = FastAPI(title="Student Exam System", version="1.0.0")
+
+def normalize_student_data(student):
+    """Нормализует данные студента: преобразует пустые строки в None для user_id и class_num"""
+    user_id = student.user_id
+    if user_id == '' or user_id is None:
+        user_id = None
+    elif isinstance(user_id, str):
+        try:
+            user_id = int(user_id) if user_id.strip() else None
+        except (ValueError, AttributeError):
+            user_id = None
+    
+    class_num = student.class_num
+    if class_num == '' or class_num is None:
+        class_num = None
+    elif isinstance(class_num, str):
+        try:
+            class_num = int(class_num) if class_num.strip() else None
+        except (ValueError, AttributeError):
+            class_num = None
+    
+    return {
+        'id': student.id,
+        'fio': student.fio,
+        'phone': student.phone,
+        'user_id': user_id,
+        'class_num': class_num,
+        'admin_comment': student.admin_comment,
+        'parent_contact_status': student.parent_contact_status
+    }
 
 # CORS middleware должен быть добавлен ПЕРВЫМ, до всех остальных middleware и роутеров
 # Получаем разрешенные источники из переменных окружения или используем значения по умолчанию
@@ -74,15 +105,15 @@ async def read_students(
     db: AsyncSession = Depends(get_db)
 ):
     students = await crud.get_students(db=db, skip=skip, limit=limit)
-    # Явно преобразуем в схемы, чтобы убедиться, что все поля включены
-    return [schemas.StudentResponse.model_validate(s) for s in students]
+    # Нормализуем данные перед валидацией - преобразуем пустые строки в None
+    return [schemas.StudentResponse(**normalize_student_data(s)) for s in students]
 
 @app.get("/students/{student_id}", response_model=schemas.StudentResponse)
 async def read_student(student_id: int, db: AsyncSession = Depends(get_db)):
     student = await crud.get_student(db=db, student_id=student_id)
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
-    return student
+    return schemas.StudentResponse(**normalize_student_data(student))
 
 @app.put("/students/{student_id}", response_model=schemas.StudentResponse)
 async def update_student(
@@ -242,7 +273,7 @@ async def read_exams_with_students(
         exam_response = schemas.ExamResponse.from_orm_with_name(exam)
         result.append(schemas.ExamWithStudentResponse(
             **exam_response.model_dump(),
-            student=schemas.StudentResponse.model_validate(exam.student)
+            student=schemas.StudentResponse(**normalize_student_data(exam.student))
         ))
     return result
 
@@ -475,6 +506,77 @@ async def get_teachers(db: AsyncSession = Depends(get_db)):
     )
     teachers = result.scalars().all()
     return [schemas.EmployeeOut.model_validate(t) for t in teachers]
+
+# Exam registrations endpoints (admin only)
+@app.get("/exam-registrations/", response_model=List[schemas.ExamRegistrationWithStudentResponse])
+async def get_exam_registrations(
+    date: Optional[str] = Query(None, description="Фильтр по дате в формате YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Получение всех записей на экзамен через телеграм бот (только для администратора)"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+    
+    # Строим запрос с загрузкой студента
+    query = select(ExamRegistration).options(selectinload(ExamRegistration.student))
+    
+    # Фильтр по дате, если указан
+    if date:
+        try:
+            exam_date = datetime.strptime(date, "%Y-%m-%d").date()
+            exam_datetime = datetime.combine(exam_date, datetime.min.time())
+            query = query.where(ExamRegistration.exam_date == exam_datetime)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Некорректный формат даты. Используйте YYYY-MM-DD")
+    
+    # Сортируем по дате и времени
+    query = query.order_by(ExamRegistration.exam_date, ExamRegistration.exam_time)
+    
+    result = await db.execute(query)
+    registrations = result.scalars().all()
+    
+    # Преобразуем в схему с информацией о студенте
+    result_list = []
+    for reg in registrations:
+        exam_date_str = ""
+        if reg.exam_date:
+            if isinstance(reg.exam_date, datetime):
+                exam_date_str = reg.exam_date.date().strftime("%Y-%m-%d")
+            else:
+                exam_date_str = str(reg.exam_date)
+        
+        created_at_str = ""
+        if reg.created_at:
+            if isinstance(reg.created_at, datetime):
+                created_at_str = reg.created_at.isoformat()
+            else:
+                created_at_str = str(reg.created_at)
+        
+        confirmed_at_str = None
+        if reg.confirmed_at:
+            if isinstance(reg.confirmed_at, datetime):
+                confirmed_at_str = reg.confirmed_at.isoformat()
+            else:
+                confirmed_at_str = str(reg.confirmed_at)
+        
+        student_fio = reg.student.fio if reg.student else "Неизвестно"
+        student_class = reg.student.class_num if reg.student else None
+        
+        result_list.append(schemas.ExamRegistrationWithStudentResponse(
+            id=reg.id,
+            student_id=reg.student_id,
+            student_fio=student_fio,
+            student_class=student_class,
+            subject=reg.subject,
+            exam_date=exam_date_str,
+            exam_time=reg.exam_time,
+            created_at=created_at_str,
+            confirmed=reg.confirmed,
+            confirmed_at=confirmed_at_str
+        ))
+    
+    return result_list
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ import StudentsTab from './components/students/StudentList';
 import ExamsTab from './components/exams/GroupCards';
 import ResultsTab from './components/results/ResultsView';
 import GroupsTab from './components/groups/GroupList';
+import RegistrationsTab from './components/registrations/RegistrationsView';
 import Notification from './components/common/Notification';
 import Login from "./pages/Login";
 
@@ -18,7 +19,8 @@ const allTabs = [
   { id: 'students', label: 'Студенты', adminOnly: true },
   { id: 'exams', label: 'Экзамены', adminOnly: false },
   { id: 'results', label: 'Результаты', adminOnly: true },
-  { id: 'groups', label: 'Группы', adminOnly: false }
+  { id: 'groups', label: 'Группы', adminOnly: false },
+  { id: 'registrations', label: 'Записи на экзамен', adminOnly: true }
 ];
 
 function App() {
@@ -54,17 +56,17 @@ function App() {
     return allTabs.filter(tab => isAdmin || !tab.adminOnly);
   }, [isAdmin]);
 
-  // Если учитель пытается открыть вкладку "Студенты" или "Результаты", перенаправляем на "Экзамены"
+  // Если учитель пытается открыть вкладку "Студенты", "Результаты" или "Записи на экзамен", перенаправляем на "Экзамены"
   useEffect(() => {
-    if (!isAdmin && (activeTab === 'students' || activeTab === 'results')) {
+    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'registrations')) {
       setActiveTab('exams');
     }
   }, [isAdmin, activeTab]);
 
   // ----- ЕСЛИ ВОШЁЛ → ПОКАЗАТЬ ОСНОВНОЙ ИНТЕРФЕЙС -----
   const renderTabContent = useMemo(() => {
-    // Если учитель пытается открыть вкладку студентов или результатов, показываем экзамены
-    if (!isAdmin && (activeTab === 'students' || activeTab === 'results')) {
+    // Если учитель пытается открыть вкладку студентов, результатов или записей, показываем экзамены
+    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'registrations')) {
       return <ExamsTab showNotification={stableShowNotification} />;
     }
     
@@ -77,6 +79,8 @@ function App() {
         return <ResultsTab showNotification={stableShowNotification} />;
       case 'groups':
         return <GroupsTab showNotification={stableShowNotification} isAdmin={isAdmin} />;
+      case 'registrations':
+        return <RegistrationsTab showNotification={stableShowNotification} />;
       default:
         return null;
     }

@@ -2,6 +2,36 @@ from pydantic import BaseModel, field_validator, validator, Field
 from typing import Optional, List, Dict
 import re
 
+def normalize_student_for_response(student):
+    """Нормализует данные студента для создания StudentResponse"""
+    user_id = student.user_id
+    if user_id == '' or user_id is None:
+        user_id = None
+    elif isinstance(user_id, str):
+        try:
+            user_id = int(user_id) if user_id.strip() else None
+        except (ValueError, AttributeError):
+            user_id = None
+    
+    class_num = student.class_num
+    if class_num == '' or class_num is None:
+        class_num = None
+    elif isinstance(class_num, str):
+        try:
+            class_num = int(class_num) if class_num.strip() else None
+        except (ValueError, AttributeError):
+            class_num = None
+    
+    return {
+        'id': student.id,
+        'fio': student.fio,
+        'phone': getattr(student, 'phone', None),
+        'user_id': user_id,
+        'class_num': class_num,
+        'admin_comment': getattr(student, 'admin_comment', None),
+        'parent_contact_status': getattr(student, 'parent_contact_status', None)
+    }
+
 class StudentBase(BaseModel):
     fio: str
     phone: Optional[str] = None
@@ -193,21 +223,9 @@ class GroupResponse(BaseModel):
             if hasattr(obj, 'students') and obj.students:
                 for s in obj.students:
                     try:
-                        # Пробуем разные способы создания StudentResponse
-                        if hasattr(StudentResponse, 'model_validate'):
-                            students.append(StudentResponse.model_validate(s))
-                        elif hasattr(StudentResponse, 'from_orm'):
-                            students.append(StudentResponse.from_orm(s))
-                        else:
-                            # Используем конструктор напрямую
-                            student_dict = {
-                                'id': s.id,
-                                'fio': s.fio,
-                                'phone': getattr(s, 'phone', None),
-                                'admin_comment': getattr(s, 'admin_comment', None),
-                                'parent_contact_status': getattr(s, 'parent_contact_status', None)
-                            }
-                            students.append(StudentResponse(**student_dict))
+                        # Нормализуем данные и создаем StudentResponse
+                        student_dict = normalize_student_for_response(s)
+                        students.append(StudentResponse(**student_dict))
                     except Exception as e:
                         print(f"Error creating StudentResponse for student {s.id}: {e}")
                         # Пропускаем проблемного студента, но продолжаем
@@ -259,7 +277,7 @@ class GroupWithStudentsResponse(BaseModel):
             'teacher_id': obj.teacher_id,
             'teacher_name': obj.teacher.teacher_name if obj.teacher else None,
             'schedule': obj.schedule,
-            'students': [StudentResponse.model_validate(s) for s in obj.students] if obj.students else []
+            'students': [StudentResponse(**normalize_student_for_response(s)) for s in obj.students] if obj.students else []
         }
         return cls(**data)
 
@@ -364,3 +382,19 @@ class StudentConfirmRequest(BaseModel):
 
 class SubjectListResponse(BaseModel):
     subjects: List[str]  # Список предметов для ОГЭ или ЕГЭ
+
+class ExamRegistrationWithStudentResponse(BaseModel):
+    """Запись на экзамен с информацией о студенте"""
+    id: int
+    student_id: int
+    student_fio: str
+    student_class: Optional[int] = None
+    subject: str
+    exam_date: str
+    exam_time: str
+    created_at: str
+    confirmed: bool
+    confirmed_at: Optional[str] = None
+    
+    class Config:
+        from_attributes = True

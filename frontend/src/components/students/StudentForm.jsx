@@ -10,7 +10,9 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
     fio: student?.fio || '',
     phone: student?.phone || '',
     admin_comment: student?.admin_comment || '',
-    parent_contact_status: student?.parent_contact_status || ''
+    parent_contact_status: student?.parent_contact_status || '',
+    class_num: student?.class_num || '',
+    user_id: student?.user_id || ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -34,6 +36,26 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
         if (isAdmin) {
           submitData.admin_comment = formData.admin_comment?.trim() || null;
           submitData.parent_contact_status = formData.parent_contact_status?.trim() || null;
+          
+          // Обрабатываем class_num: пустая строка -> null, иначе число (только 9, 10, 11)
+          const classNumValue = formData.class_num?.toString().trim();
+          if (classNumValue) {
+            const classNum = parseInt(classNumValue, 10);
+            if (!isNaN(classNum) && [9, 10, 11].includes(classNum)) {
+              submitData.class_num = classNum;
+            } else {
+              submitData.class_num = null;
+            }
+          } else {
+            submitData.class_num = null;
+          }
+          
+          // Обрабатываем user_id: пустая строка -> null, иначе число
+          const userIdValue = formData.user_id?.toString().trim();
+          submitData.user_id = userIdValue ? parseInt(userIdValue, 10) : null;
+          if (isNaN(submitData.user_id)) {
+            submitData.user_id = null;
+          }
         }
         await updateStudent(student.id, submitData);
         showNotification('Студент обновлён', 'success');
@@ -82,10 +104,10 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
       {isAdmin && student && (
         <>
           <div className="form-group">
-            <label>Статус контакта с родителями</label>
+            <label>Класс</label>
             <select
-              value={formData.parent_contact_status}
-              onChange={(e) => setFormData({ ...formData, parent_contact_status: e.target.value })}
+              value={formData.class_num || ''}
+              onChange={(e) => setFormData({ ...formData, class_num: e.target.value })}
               style={{
                 width: '100%',
                 padding: '8px',
@@ -95,30 +117,32 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
               }}
             >
               <option value="">Не указан</option>
-              <option value="informed">Информация передана</option>
-              <option value="callback">Перезвонить позже</option>
-              <option value="no_answer">Нет ответа</option>
+              <option value="9">9 класс</option>
+              <option value="10">10 класс</option>
+              <option value="11">11 класс</option>
             </select>
           </div>
 
           <div className="form-group">
-            <label>Комментарий администратора</label>
-            <textarea
-              value={formData.admin_comment}
-              onChange={(e) => setFormData({ ...formData, admin_comment: e.target.value })}
-              placeholder="Введите комментарий администратора..."
-              rows="4"
+            <label>Telegram User ID</label>
+            <input
+              type="number"
+              value={formData.user_id || ''}
+              onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
+              placeholder="123456789"
               style={{
                 width: '100%',
                 padding: '8px',
                 fontSize: '14px',
                 border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontFamily: 'inherit',
-                resize: 'vertical'
+                borderRadius: '4px'
               }}
             />
+            <small style={{ color: '#666', fontSize: '12px', display: 'block', marginTop: '4px' }}>
+              ID пользователя в Telegram (число)
+            </small>
           </div>
+
         </>
       )}
 
