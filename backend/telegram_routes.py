@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import re
 
 from database import get_db
-from models import Student, StudyGroup, ExamRegistration, group_student_association
+from models import Student, StudyGroup, ExamRegistration, group_student_association, Probnik
 import schemas
 
 router = APIRouter(prefix="/telegram", tags=["telegram"])
@@ -256,6 +256,42 @@ async def get_subjects(class_num: int, db: AsyncSession = Depends(get_db)):
     else:
         raise HTTPException(status_code=400, detail="Некорректный класс")
 
+
+@router.get("/active-probnik")
+async def get_active_probnik(db: AsyncSession = Depends(get_db)):
+    """Получение активного пробника для телеграм-бота"""
+    result = await db.execute(select(Probnik).where(Probnik.is_active == True))
+    probnik = result.scalar_one_or_none()
+    
+    if not probnik:
+        return None
+    
+    return {
+        "id": probnik.id,
+        "name": probnik.name,
+        "is_active": probnik.is_active,
+        "slots_baikalskaya": probnik.slots_baikalskaya,
+        "slots_lermontova": probnik.slots_lermontova,
+        "exam_dates": probnik.exam_dates,
+        "exam_times": probnik.exam_times
+    }
+
+
+@router.get("/users-with-telegram")
+async def get_users_with_telegram(db: AsyncSession = Depends(get_db)):
+    """Получение всех пользователей с привязанным Telegram ID"""
+    result = await db.execute(
+        select(Student).where(
+            Student.user_id.isnot(None),
+            Student.user_id > 0
+        )
+    )
+    students = result.scalars().all()
+    
+    return {
+        "users": [{"user_id": s.user_id, "fio": s.fio} for s in students]
+    }
+
 @router.post("/register-exam", response_model=schemas.ExamRegistrationResponse)
 async def register_exam(
     registration: schemas.ExamRegistrationCreate,
@@ -270,6 +306,10 @@ async def register_exam(
     
     if not student:
         raise HTTPException(status_code=404, detail="Ученик не найден")
+    
+    # Получаем активный пробник
+    probnik_result = await db.execute(select(Probnik).where(Probnik.is_active == True))
+    active_probnik = probnik_result.scalar_one_or_none()
     
     # Проверяем, что ученик не записался уже на 4 экзамена
     existing_registrations = await db.execute(
@@ -316,7 +356,9 @@ async def register_exam(
         student_id=registration.student_id,
         subject=registration.subject,
         exam_date=exam_datetime,
-        exam_time=registration.exam_time
+        exam_time=registration.exam_time,
+        school=registration.school,
+        probnik_id=active_probnik.id if active_probnik else None
     )
     db.add(db_registration)
     await db.commit()
@@ -328,35 +370,62 @@ async def register_exam(
         subject=db_registration.subject,
         exam_date=db_registration.exam_date.strftime("%Y-%m-%d"),
         exam_time=db_registration.exam_time,
+        school=db_registration.school,
         created_at=db_registration.created_at.isoformat() if db_registration.created_at else "",
         confirmed=db_registration.confirmed,
-        confirmed_at=db_registration.confirmed_at.isoformat() if db_registration.confirmed_at else None
+        confirmed_at=db_registration.confirmed_at.isoformat() if db_registration.confirmed_at else None,
+        attended=getattr(db_registration, 'attended', False),
+        submitted_work=getattr(db_registration, 'submitted_work', False)
     )
 
 @router.get("/available-slots/{date}")
-async def get_available_slots(date: str, db: AsyncSession = Depends(get_db)):
+async def get_available_slots(date: str, school: str = None, db: AsyncSession = Depends(get_db)):
     """Получение доступных слотов на дату"""
     try:
         exam_date = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Некорректный формат даты")
     
+    # Получаем активный пробник для определения лимитов
+    probnik_result = await db.execute(select(Probnik).where(Probnik.is_active == True))
+    probnik = probnik_result.scalar_one_or_none()
+    
+    # Определяем времена и лимиты из пробника
     times = ["9:00", "12:00"]
+    default_limit = 45
+    
+    if probnik:
+        if probnik.exam_times:
+            times = probnik.exam_times
+    
     slots = {}
     
     for time in times:
         # Создаем datetime для сравнения
         exam_datetime = datetime.combine(exam_date, datetime.min.time())
-        count_result = await db.execute(
-            select(ExamRegistration).where(
-                ExamRegistration.exam_date == exam_datetime,
-                ExamRegistration.exam_time == time
-            )
+        
+        # Считаем записи с учетом школы если указана
+        query = select(ExamRegistration).where(
+            ExamRegistration.exam_date == exam_datetime,
+            ExamRegistration.exam_time == time
         )
+        if school:
+            query = query.where(ExamRegistration.school == school)
+        
+        count_result = await db.execute(query)
         count = len(count_result.scalars().all())
+        
+        # Определяем лимит из пробника
+        limit = default_limit
+        if probnik and school:
+            if school == "Байкальская" and probnik.slots_baikalskaya:
+                limit = probnik.slots_baikalskaya.get(time, default_limit)
+            elif school == "Лермонтова" and probnik.slots_lermontova:
+                limit = probnik.slots_lermontova.get(time, default_limit)
+        
         slots[time] = {
             "registered": count,
-            "available": max(0, 45 - count)
+            "available": max(0, limit - count)
         }
     
     return {"date": date, "slots": slots}
@@ -392,9 +461,12 @@ async def get_student_registrations(
             subject=r.subject,
             exam_date=exam_date_str,
             exam_time=r.exam_time,
+            school=r.school,
             created_at=r.created_at.isoformat() if r.created_at else "",
             confirmed=r.confirmed,
-            confirmed_at=r.confirmed_at.isoformat() if r.confirmed_at else None
+            confirmed_at=r.confirmed_at.isoformat() if r.confirmed_at else None,
+            attended=getattr(r, 'attended', False),
+            submitted_work=getattr(r, 'submitted_work', False)
         ))
     
     return result_list
@@ -418,6 +490,25 @@ async def confirm_participation(
     await db.commit()
     
     return {"message": "Участие подтверждено"}
+
+@router.delete("/registration/{registration_id}")
+async def delete_registration(
+    registration_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Удаление записи на экзамен"""
+    result = await db.execute(
+        select(ExamRegistration).where(ExamRegistration.id == registration_id)
+    )
+    registration = result.scalar_one_or_none()
+    
+    if not registration:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    
+    await db.delete(registration)
+    await db.commit()
+    
+    return {"message": "Запись удалена"}
 
 @router.get("/pending-notifications")
 async def get_pending_notifications(db: AsyncSession = Depends(get_db)):

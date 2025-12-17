@@ -6,6 +6,7 @@ const RegistrationsView = ({ showNotification }) => {
   const [registrations, setRegistrations] = useState([]);
   const [allDates, setAllDates] = useState([]); // Список всех доступных дат
   const [selectedDate, setSelectedDate] = useState('');
+  const [selectedSchool, setSelectedSchool] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
   // Загружаем все записи один раз при монтировании для списка дат
@@ -13,11 +14,11 @@ const RegistrationsView = ({ showNotification }) => {
     loadAllRegistrationsForDates();
   }, []);
 
-  // Загружаем записи при изменении даты
+  // Загружаем записи при изменении даты или школы
   useEffect(() => {
     loadRegistrations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate]);
+  }, [selectedDate, selectedSchool]);
 
   const loadAllRegistrationsForDates = async () => {
     try {
@@ -44,12 +45,18 @@ const RegistrationsView = ({ showNotification }) => {
   const loadRegistrations = async () => {
     setIsLoading(true);
     try {
-      const params = selectedDate ? { date: selectedDate } : {};
+      const params = {};
+      if (selectedDate) {
+        params.date = selectedDate;
+      }
+      if (selectedSchool) {
+        params.school = selectedSchool;
+      }
       const response = await api.get('/exam-registrations/', { params });
       console.log('Загружены записи:', response.data); // Для отладки
       const data = Array.isArray(response.data) ? response.data : [];
       setRegistrations(data);
-      if (data.length === 0 && !selectedDate) {
+      if (data.length === 0 && !selectedDate && !selectedSchool) {
         console.log('Нет записей на экзамен');
       }
     } catch (err) {
@@ -67,9 +74,32 @@ const RegistrationsView = ({ showNotification }) => {
     setSelectedDate(e.target.value);
   };
 
+  const handleSchoolChange = (e) => {
+    setSelectedSchool(e.target.value);
+  };
+
   const clearFilter = () => {
     setSelectedDate('');
+    setSelectedSchool('');
     // loadRegistrations вызовется автоматически через useEffect
+  };
+
+  const handleCheckboxChange = async (registrationId, field, value) => {
+    try {
+      await api.put(`/exam-registrations/${registrationId}`, {
+        [field]: value
+      });
+      // Обновляем локальное состояние
+      setRegistrations(prevRegs =>
+        prevRegs.map(reg =>
+          reg.id === registrationId ? { ...reg, [field]: value } : reg
+        )
+      );
+      showNotification('Статус обновлен', 'success');
+    } catch (err) {
+      console.error('Ошибка обновления статуса:', err);
+      showNotification('Ошибка обновления статуса', 'error');
+    }
   };
 
   const formatDate = (dateStr) => {
@@ -141,12 +171,25 @@ const RegistrationsView = ({ showNotification }) => {
               </option>
             ))}
           </select>
-          {selectedDate && (
-            <button onClick={clearFilter} className="btn-clear-filter">
-              Сбросить фильтр
-            </button>
-          )}
         </div>
+        <div className="filter-group">
+          <label htmlFor="school-filter">Фильтр по школе:</label>
+          <select
+            id="school-filter"
+            value={selectedSchool}
+            onChange={handleSchoolChange}
+            className="date-select"
+          >
+            <option value="">Все школы</option>
+            <option value="Лермонтова">Лермонтова</option>
+            <option value="Байкальская">Байкальская</option>
+          </select>
+        </div>
+        {(selectedDate || selectedSchool) && (
+          <button onClick={clearFilter} className="btn-clear-filter">
+            Сбросить фильтры
+          </button>
+        )}
         <div className="registrations-count">
           Всего записей: {registrations.length}
         </div>
@@ -154,8 +197,8 @@ const RegistrationsView = ({ showNotification }) => {
 
       {registrations.length === 0 ? (
         <div className="no-registrations">
-          {selectedDate ? (
-            <p>Нет записей на выбранный день</p>
+          {selectedDate || selectedSchool ? (
+            <p>Нет записей по выбранным фильтрам</p>
           ) : (
             <p>Нет записей на экзамен</p>
           )}
@@ -170,8 +213,10 @@ const RegistrationsView = ({ showNotification }) => {
                 <th>Предмет</th>
                 <th>Дата экзамена</th>
                 <th>Время</th>
-                <th>Дата записи</th>
+                <th>Школа</th>
                 <th>Подтверждено</th>
+                <th>Пришел на экзамен</th>
+                <th>Сдал работу</th>
               </tr>
             </thead>
             <tbody>
@@ -182,13 +227,33 @@ const RegistrationsView = ({ showNotification }) => {
                   <td>{reg.subject}</td>
                   <td>{formatDate(reg.exam_date)}</td>
                   <td>{reg.exam_time}</td>
-                  <td>{formatDateTime(reg.created_at)}</td>
+                  <td>{reg.school || '-'}</td>
                   <td>
                     {reg.confirmed ? (
                       <span className="confirmed-badge">✓ Да</span>
                     ) : (
                       <span className="not-confirmed-badge">Нет</span>
                     )}
+                  </td>
+                  <td>
+                    <label className="checkbox-container">
+                      <input
+                        type="checkbox"
+                        checked={reg.attended || false}
+                        onChange={(e) => handleCheckboxChange(reg.id, 'attended', e.target.checked)}
+                      />
+                      <span className="checkmark"></span>
+                    </label>
+                  </td>
+                  <td>
+                    <label className="checkbox-container">
+                      <input
+                        type="checkbox"
+                        checked={reg.submitted_work || false}
+                        onChange={(e) => handleCheckboxChange(reg.id, 'submitted_work', e.target.checked)}
+                      />
+                      <span className="checkmark"></span>
+                    </label>
                   </td>
                 </tr>
               ))}

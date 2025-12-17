@@ -98,8 +98,35 @@ class ExamRegistration(Base):
     subject = Column(String(100), nullable=False)  # Предмет экзамена
     exam_date = Column(DateTime, nullable=False)  # Дата и время экзамена
     exam_time = Column(String(10), nullable=False)  # "9:00" или "12:00"
+    school = Column(String(100), nullable=True)  # "Байкальская" или "Лермонтова"
     created_at = Column(DateTime, default=datetime.utcnow)
     confirmed = Column(Boolean, default=False)  # Подтверждение участия
     confirmed_at = Column(DateTime, nullable=True)  # Когда подтвердил участие
+    attended = Column(Boolean, default=False)  # Пришел на экзамен
+    submitted_work = Column(Boolean, default=False)  # Сдал работу
+    probnik_id = Column(Integer, ForeignKey('probnik.id'), nullable=True)  # Связь с пробником
     
-    student = relationship("Student", back_populates="exam_registrations") 
+    student = relationship("Student", back_populates="exam_registrations")
+    probnik = relationship("Probnik", back_populates="registrations")
+
+
+class Probnik(Base):
+    """Настройки пробника (экзамена для записи через телеграм)"""
+    __tablename__ = 'probnik'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)  # Название пробника
+    is_active = Column(Boolean, default=False)  # Открыта ли запись
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Места на школах в JSON формате: {"9:00": 45, "12:00": 45}
+    slots_baikalskaya = Column(JSON, nullable=True)
+    slots_lermontova = Column(JSON, nullable=True)
+    
+    # Дни проведения в JSON: [{"label": "Понедельник 5.01.26", "date": "2026-01-05"}, ...]
+    exam_dates = Column(JSON, nullable=True)
+    
+    # Время проведения: ["9:00", "12:00"]
+    exam_times = Column(JSON, nullable=True)
+    
+    registrations = relationship("ExamRegistration", back_populates="probnik") 

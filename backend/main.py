@@ -13,7 +13,7 @@ from database import get_db, create_tables
 import crud
 import schemas
 from schemas import GroupStudentsUpdate, GroupUpdate
-from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration
+from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration, Probnik
 
 from auth_routes import router as auth_router
 from auth import get_current_user
@@ -42,6 +42,14 @@ def normalize_student_data(student):
         except (ValueError, AttributeError):
             class_num = None
     
+    # Извлекаем уникальные школы из записей на экзамен
+    schools = []
+    if hasattr(student, 'exam_registrations') and student.exam_registrations:
+        schools = list(set([
+            reg.school for reg in student.exam_registrations 
+            if reg.school and reg.school.strip()
+        ]))
+    
     return {
         'id': student.id,
         'fio': student.fio,
@@ -49,7 +57,8 @@ def normalize_student_data(student):
         'user_id': user_id,
         'class_num': class_num,
         'admin_comment': student.admin_comment,
-        'parent_contact_status': student.parent_contact_status
+        'parent_contact_status': student.parent_contact_status,
+        'schools': schools if schools else None
     }
 
 # CORS middleware должен быть добавлен ПЕРВЫМ, до всех остальных middleware и роутеров
@@ -511,6 +520,7 @@ async def get_teachers(db: AsyncSession = Depends(get_db)):
 @app.get("/exam-registrations/", response_model=List[schemas.ExamRegistrationWithStudentResponse])
 async def get_exam_registrations(
     date: Optional[str] = Query(None, description="Фильтр по дате в формате YYYY-MM-DD"),
+    school: Optional[str] = Query(None, description="Фильтр по школе (Байкальская или Лермонтова)"),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user)
 ):
@@ -529,6 +539,10 @@ async def get_exam_registrations(
             query = query.where(ExamRegistration.exam_date == exam_datetime)
         except ValueError:
             raise HTTPException(status_code=400, detail="Некорректный формат даты. Используйте YYYY-MM-DD")
+    
+    # Фильтр по школе, если указан
+    if school:
+        query = query.where(ExamRegistration.school == school)
     
     # Сортируем по дате и времени
     query = query.order_by(ExamRegistration.exam_date, ExamRegistration.exam_time)
@@ -571,12 +585,255 @@ async def get_exam_registrations(
             subject=reg.subject,
             exam_date=exam_date_str,
             exam_time=reg.exam_time,
+            school=reg.school,
             created_at=created_at_str,
             confirmed=reg.confirmed,
-            confirmed_at=confirmed_at_str
+            confirmed_at=confirmed_at_str,
+            attended=getattr(reg, 'attended', False),
+            submitted_work=getattr(reg, 'submitted_work', False)
         ))
     
     return result_list
+
+
+@app.put("/exam-registrations/{registration_id}", response_model=schemas.ExamRegistrationWithStudentResponse)
+async def update_exam_registration(
+    registration_id: int,
+    registration_update: schemas.ExamRegistrationUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Обновление записи на экзамен (только для администратора)"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+    
+    # Находим запись
+    result = await db.execute(
+        select(ExamRegistration)
+        .options(selectinload(ExamRegistration.student))
+        .where(ExamRegistration.id == registration_id)
+    )
+    registration = result.scalar_one_or_none()
+    
+    if not registration:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    
+    # Обновляем поля
+    update_data = registration_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(registration, field, value)
+    
+    await db.commit()
+    await db.refresh(registration)
+    
+    # Формируем ответ
+    exam_date_str = ""
+    if registration.exam_date:
+        if isinstance(registration.exam_date, datetime):
+            exam_date_str = registration.exam_date.date().strftime("%Y-%m-%d")
+        else:
+            exam_date_str = str(registration.exam_date)
+    
+    created_at_str = ""
+    if registration.created_at:
+        if isinstance(registration.created_at, datetime):
+            created_at_str = registration.created_at.isoformat()
+        else:
+            created_at_str = str(registration.created_at)
+    
+    confirmed_at_str = None
+    if registration.confirmed_at:
+        if isinstance(registration.confirmed_at, datetime):
+            confirmed_at_str = registration.confirmed_at.isoformat()
+        else:
+            confirmed_at_str = str(registration.confirmed_at)
+    
+    student_fio = registration.student.fio if registration.student else "Неизвестно"
+    student_class = registration.student.class_num if registration.student else None
+    
+    return schemas.ExamRegistrationWithStudentResponse(
+        id=registration.id,
+        student_id=registration.student_id,
+        student_fio=student_fio,
+        student_class=student_class,
+        subject=registration.subject,
+        exam_date=exam_date_str,
+        exam_time=registration.exam_time,
+        school=registration.school,
+        created_at=created_at_str,
+        confirmed=registration.confirmed,
+        confirmed_at=confirmed_at_str,
+        attended=getattr(registration, 'attended', False),
+        submitted_work=getattr(registration, 'submitted_work', False)
+    )
+
+
+# ==== ПРОБНИК (НАСТРОЙКИ ЭКЗАМЕНА) ====
+
+@app.get("/probnik/", response_model=List[schemas.ProbnikResponse])
+async def get_all_probniks(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Получение всех пробников"""
+    result = await db.execute(select(Probnik))
+    probniks = result.scalars().all()
+    
+    response = []
+    for p in probniks:
+        response.append(schemas.ProbnikResponse(
+            id=p.id,
+            name=p.name,
+            is_active=p.is_active,
+            created_at=p.created_at.isoformat() if p.created_at else None,
+            slots_baikalskaya=p.slots_baikalskaya,
+            slots_lermontova=p.slots_lermontova,
+            exam_dates=p.exam_dates,
+            exam_times=p.exam_times
+        ))
+    return response
+
+
+@app.get("/probnik/active", response_model=Optional[schemas.ProbnikResponse])
+async def get_active_probnik(db: AsyncSession = Depends(get_db)):
+    """Получение активного пробника (для телеграм-бота)"""
+    result = await db.execute(select(Probnik).where(Probnik.is_active == True))
+    probnik = result.scalar_one_or_none()
+    
+    if not probnik:
+        return None
+    
+    return schemas.ProbnikResponse(
+        id=probnik.id,
+        name=probnik.name,
+        is_active=probnik.is_active,
+        created_at=probnik.created_at.isoformat() if probnik.created_at else None,
+        slots_baikalskaya=probnik.slots_baikalskaya,
+        slots_lermontova=probnik.slots_lermontova,
+        exam_dates=probnik.exam_dates,
+        exam_times=probnik.exam_times
+    )
+
+
+@app.post("/probnik/", response_model=schemas.ProbnikResponse)
+async def create_probnik(
+    probnik: schemas.ProbnikCreate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Создание нового пробника (только для админа)"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    
+    # Если создаем активный пробник, деактивируем остальные
+    if probnik.is_active:
+        await db.execute(
+            select(Probnik).where(Probnik.is_active == True)
+        )
+        result = await db.execute(select(Probnik).where(Probnik.is_active == True))
+        for p in result.scalars().all():
+            p.is_active = False
+    
+    # Преобразуем exam_dates в словари
+    exam_dates_dict = None
+    if probnik.exam_dates:
+        exam_dates_dict = [{"label": d.label, "date": d.date} for d in probnik.exam_dates]
+    
+    db_probnik = Probnik(
+        name=probnik.name,
+        is_active=probnik.is_active,
+        slots_baikalskaya=probnik.slots_baikalskaya,
+        slots_lermontova=probnik.slots_lermontova,
+        exam_dates=exam_dates_dict,
+        exam_times=probnik.exam_times
+    )
+    db.add(db_probnik)
+    await db.commit()
+    await db.refresh(db_probnik)
+    
+    return schemas.ProbnikResponse(
+        id=db_probnik.id,
+        name=db_probnik.name,
+        is_active=db_probnik.is_active,
+        created_at=db_probnik.created_at.isoformat() if db_probnik.created_at else None,
+        slots_baikalskaya=db_probnik.slots_baikalskaya,
+        slots_lermontova=db_probnik.slots_lermontova,
+        exam_dates=db_probnik.exam_dates,
+        exam_times=db_probnik.exam_times
+    )
+
+
+@app.put("/probnik/{probnik_id}", response_model=schemas.ProbnikResponse)
+async def update_probnik(
+    probnik_id: int,
+    probnik_update: schemas.ProbnikUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Обновление пробника"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    
+    result = await db.execute(select(Probnik).where(Probnik.id == probnik_id))
+    probnik = result.scalar_one_or_none()
+    
+    if not probnik:
+        raise HTTPException(status_code=404, detail="Пробник не найден")
+    
+    # Проверяем, активируется ли пробник (был неактивен, становится активным)
+    was_inactive = not probnik.is_active
+    becoming_active = probnik_update.is_active == True
+    
+    # Если активируем этот пробник, деактивируем остальные
+    if probnik_update.is_active:
+        other_result = await db.execute(select(Probnik).where(Probnik.id != probnik_id, Probnik.is_active == True))
+        for p in other_result.scalars().all():
+            p.is_active = False
+    
+    update_data = probnik_update.dict(exclude_unset=True)
+    
+    # Преобразуем exam_dates если есть
+    if 'exam_dates' in update_data and update_data['exam_dates']:
+        update_data['exam_dates'] = [{"label": d.label, "date": d.date} for d in probnik_update.exam_dates]
+    
+    for field, value in update_data.items():
+        setattr(probnik, field, value)
+    
+    await db.commit()
+    await db.refresh(probnik)
+    
+    return schemas.ProbnikResponse(
+        id=probnik.id,
+        name=probnik.name,
+        is_active=probnik.is_active,
+        created_at=probnik.created_at.isoformat() if probnik.created_at else None,
+        slots_baikalskaya=probnik.slots_baikalskaya,
+        slots_lermontova=probnik.slots_lermontova,
+        exam_dates=probnik.exam_dates,
+        exam_times=probnik.exam_times
+    )
+
+
+@app.delete("/probnik/{probnik_id}")
+async def delete_probnik(
+    probnik_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Удаление пробника"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    
+    result = await db.execute(select(Probnik).where(Probnik.id == probnik_id))
+    probnik = result.scalar_one_or_none()
+    
+    if not probnik:
+        raise HTTPException(status_code=404, detail="Пробник не найден")
+    
+    await db.delete(probnik)
+    await db.commit()
+    
+    return {"message": "Пробник удален"}
 
 
 if __name__ == "__main__":

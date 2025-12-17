@@ -23,17 +23,24 @@ async def create_student(db: AsyncSession, student: StudentCreate):
     return db_student
 
 async def get_students(db: AsyncSession, skip: int = 0, limit: int = 100):
-    result = await db.execute(select(Student))
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.exam_registrations))
+    )
     return result.scalars().all()
 
 async def get_student(db: AsyncSession, student_id: int):
-    result = await db.execute(select(Student).where(Student.id == student_id))
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.exam_registrations))
+        .where(Student.id == student_id)
+    )
     return result.scalar_one_or_none()
 
 async def get_student_with_exams(db: AsyncSession, student_id: int):
     result = await db.execute(
         select(Student)
-        .options(selectinload(Student.exams))
+        .options(selectinload(Student.exams), selectinload(Student.exam_registrations))
         .where(Student.id == student_id)
     )
     return result.scalar_one_or_none()

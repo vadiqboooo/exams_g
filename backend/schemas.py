@@ -67,6 +67,7 @@ class StudentResponse(StudentBase):
     id: int
     admin_comment: Optional[str] = None
     parent_contact_status: Optional[str] = None
+    schools: Optional[List[str]] = None  # Список школ из записей на экзамен
     
     class Config:
         from_attributes = True
@@ -353,6 +354,7 @@ class ExamRegistrationCreate(BaseModel):
     subject: str
     exam_date: str  # Дата в формате "YYYY-MM-DD"
     exam_time: str  # "9:00" или "12:00"
+    school: Optional[str] = None  # "Байкальская" или "Лермонтова"
 
 class ExamRegistrationResponse(BaseModel):
     id: int
@@ -360,9 +362,12 @@ class ExamRegistrationResponse(BaseModel):
     subject: str
     exam_date: str
     exam_time: str
+    school: Optional[str] = None
     created_at: str
     confirmed: bool
     confirmed_at: Optional[str] = None
+    attended: bool = False
+    submitted_work: bool = False
     
     class Config:
         from_attributes = True
@@ -392,9 +397,54 @@ class ExamRegistrationWithStudentResponse(BaseModel):
     subject: str
     exam_date: str
     exam_time: str
+    school: Optional[str] = None
     created_at: str
     confirmed: bool
     confirmed_at: Optional[str] = None
+    attended: bool = False
+    submitted_work: bool = False
+    
+    class Config:
+        from_attributes = True
+
+class ExamRegistrationUpdate(BaseModel):
+    """Обновление записи на экзамен"""
+    attended: Optional[bool] = None
+    submitted_work: Optional[bool] = None
+    confirmed: Optional[bool] = None
+
+
+# ==== СХЕМЫ ДЛЯ ПРОБНИКА ====
+
+class ProbnikDateItem(BaseModel):
+    label: str  # "Понедельник 5.01.26"
+    date: str   # "2026-01-05"
+
+class ProbnikCreate(BaseModel):
+    name: str
+    is_active: bool = False
+    slots_baikalskaya: Optional[Dict[str, int]] = None  # {"9:00": 45, "12:00": 45}
+    slots_lermontova: Optional[Dict[str, int]] = None
+    exam_dates: Optional[List[ProbnikDateItem]] = None
+    exam_times: Optional[List[str]] = None  # ["9:00", "12:00"]
+
+class ProbnikUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+    slots_baikalskaya: Optional[Dict[str, int]] = None
+    slots_lermontova: Optional[Dict[str, int]] = None
+    exam_dates: Optional[List[ProbnikDateItem]] = None
+    exam_times: Optional[List[str]] = None
+
+class ProbnikResponse(BaseModel):
+    id: int
+    name: str
+    is_active: bool
+    created_at: Optional[str] = None
+    slots_baikalskaya: Optional[Dict[str, int]] = None
+    slots_lermontova: Optional[Dict[str, int]] = None
+    exam_dates: Optional[List[ProbnikDateItem]] = None
+    exam_times: Optional[List[str]] = None
     
     class Config:
         from_attributes = True

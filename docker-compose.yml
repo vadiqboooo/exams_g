@@ -42,6 +42,18 @@ services:
       retries: 3
       start_period: 40s
 
+  telegram_bot:
+    build:
+      context: ./telegram_bot
+      dockerfile: Dockerfile
+    container_name: exams_telegram_bot
+    environment:
+      - API_BASE_URL=http://backend:8000
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
 networks:
   default:
     name: exams_network

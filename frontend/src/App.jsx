@@ -9,6 +9,7 @@ import ExamsTab from './components/exams/GroupCards';
 import ResultsTab from './components/results/ResultsView';
 import GroupsTab from './components/groups/GroupList';
 import RegistrationsTab from './components/registrations/RegistrationsView';
+import ProbnikTab from './components/probnik/ProbnikManager';
 import Notification from './components/common/Notification';
 import Login from "./pages/Login";
 
@@ -20,7 +21,8 @@ const allTabs = [
   { id: 'exams', label: 'Экзамены', adminOnly: false },
   { id: 'results', label: 'Результаты', adminOnly: true },
   { id: 'groups', label: 'Группы', adminOnly: false },
-  { id: 'registrations', label: 'Записи на экзамен', adminOnly: true }
+  { id: 'registrations', label: 'Записи на экзамен', adminOnly: true },
+  { id: 'probnik', label: 'Пробник', adminOnly: true }
 ];
 
 function App() {
@@ -56,17 +58,17 @@ function App() {
     return allTabs.filter(tab => isAdmin || !tab.adminOnly);
   }, [isAdmin]);
 
-  // Если учитель пытается открыть вкладку "Студенты", "Результаты" или "Записи на экзамен", перенаправляем на "Экзамены"
+  // Если учитель пытается открыть админские вкладки, перенаправляем на "Экзамены"
   useEffect(() => {
-    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'registrations')) {
+    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'registrations' || activeTab === 'probnik')) {
       setActiveTab('exams');
     }
   }, [isAdmin, activeTab]);
 
   // ----- ЕСЛИ ВОШЁЛ → ПОКАЗАТЬ ОСНОВНОЙ ИНТЕРФЕЙС -----
   const renderTabContent = useMemo(() => {
-    // Если учитель пытается открыть вкладку студентов, результатов или записей, показываем экзамены
-    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'registrations')) {
+    // Если учитель пытается открыть админские вкладки, показываем экзамены
+    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'registrations' || activeTab === 'probnik')) {
       return <ExamsTab showNotification={stableShowNotification} />;
     }
     
@@ -81,6 +83,8 @@ function App() {
         return <GroupsTab showNotification={stableShowNotification} isAdmin={isAdmin} />;
       case 'registrations':
         return <RegistrationsTab showNotification={stableShowNotification} />;
+      case 'probnik':
+        return <ProbnikTab showNotification={stableShowNotification} />;
       default:
         return null;
     }
