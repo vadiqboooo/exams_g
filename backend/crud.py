@@ -70,13 +70,33 @@ async def update_student(db: AsyncSession, student_id: int, student_update: Stud
     return db_student
 
 async def delete_student(db: AsyncSession, student_id: int):
-    """Удаление студента"""
+    """Удаление студента и всех связанных записей"""
+    from models import Exam, ExamRegistration, group_student_association
+    
     result = await db.execute(select(Student).where(Student.id == student_id))
     db_student = result.scalar_one_or_none()
     
     if db_student is None:
         return False
     
+    # Удаляем связанные экзамены
+    await db.execute(
+        Exam.__table__.delete().where(Exam.id_student == student_id)
+    )
+    
+    # Удаляем связанные записи на экзамен (telegram)
+    await db.execute(
+        ExamRegistration.__table__.delete().where(ExamRegistration.student_id == student_id)
+    )
+    
+    # Удаляем связи с группами
+    await db.execute(
+        group_student_association.delete().where(
+            group_student_association.c.student_id == student_id
+        )
+    )
+    
+    # Удаляем самого студента
     await db.delete(db_student)
     await db.commit()
     return True
