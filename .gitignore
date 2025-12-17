@@ -7,7 +7,8 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-.db
+*.db
+backend/school.db
 
 node_modules
 dist
