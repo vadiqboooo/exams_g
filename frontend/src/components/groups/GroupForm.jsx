@@ -1,9 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
 import { useApi } from '../../hooks/useApi';
+import { useStudents } from '../../hooks/useStudents';
 
-const GroupForm = ({ group = null, students = [], onClose, showNotification }) => {
+const GroupForm = ({ group = null, students: studentsProp = [], onClose, showNotification }) => {
   const { makeRequest } = useApi();
+  const { students: studentsFromHook, loadStudents } = useStudents();
+  
+  // Используем студентов из хука, если они есть, иначе из пропса
+  const students = studentsFromHook.length > 0 ? studentsFromHook : studentsProp;
+  
+  // Загружаем студентов при открытии формы
+  useEffect(() => {
+    if (studentsFromHook.length === 0) {
+      loadStudents();
+    }
+  }, [loadStudents, studentsFromHook.length]);
   const [teachers, setTeachers] = useState([]);
   const [teacherSearch, setTeacherSearch] = useState('');
   const [showTeacherDropdown, setShowTeacherDropdown] = useState(false);
@@ -46,6 +58,7 @@ const GroupForm = ({ group = null, students = [], onClose, showNotification }) =
     }
   });
   const [loading, setLoading] = useState(false);
+  const [studentSearch, setStudentSearch] = useState('');
 
   // Загружаем список преподавателей
   useEffect(() => {
@@ -465,18 +478,54 @@ const GroupForm = ({ group = null, students = [], onClose, showNotification }) =
             {students.length === 0 ? (
               <p className="no-students">Нет доступных студентов</p>
             ) : (
-              <div className="students-checkbox-list">
-                {students.map(student => (
-                  <label key={student.id} className="student-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={formData.student_ids.includes(student.id)}
-                      onChange={() => handleStudentToggle(student.id)}
-                    />
-                    <span>{student.fio} {student.phone && `(${student.phone})`}</span>
-                  </label>
-                ))}
-              </div>
+              <>
+                <div className="student-search-box" style={{ marginBottom: '15px' }}>
+                  <input
+                    type="text"
+                    placeholder="Поиск по имени или телефону..."
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    className="student-search-input"
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      border: '2px solid #e0e0e0',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                <div className="students-checkbox-list">
+                  {students
+                    .filter(student => {
+                      if (!studentSearch) return true;
+                      const searchLower = studentSearch.toLowerCase();
+                      const fio = (student.fio || '').toLowerCase();
+                      const phone = (student.phone || '').toLowerCase();
+                      return fio.includes(searchLower) || phone.includes(searchLower);
+                    })
+                    .sort((a, b) => {
+                      // Студенты в группе (отмеченные) идут первыми
+                      const aInGroup = formData.student_ids.includes(a.id);
+                      const bInGroup = formData.student_ids.includes(b.id);
+                      if (aInGroup && !bInGroup) return -1;
+                      if (!aInGroup && bInGroup) return 1;
+                      // Если оба в группе или оба не в группе, сортируем по ФИО
+                      return (a.fio || '').localeCompare(b.fio || '');
+                    })
+                    .map(student => (
+                      <label key={student.id} className="student-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={formData.student_ids.includes(student.id)}
+                          onChange={() => handleStudentToggle(student.id)}
+                        />
+                        <span>{student.fio} {student.phone && `(${student.phone})`}</span>
+                      </label>
+                    ))}
+                </div>
+              </>
             )}
             <div className="selected-count">
               Выбрано: {formData.student_ids.length} студентов

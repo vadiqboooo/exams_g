@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useStudents } from '../../hooks/useStudents';
 
 const StudentForm = ({ student = null, onClose, showNotification }) => {
-  const { createStudent, updateStudent } = useStudents();
+  const { createStudent, updateStudent, loadStudents } = useStudents();
   const userRole = localStorage.getItem("role") || "teacher";
   const isAdmin = userRole === "admin";
   

@@ -18,6 +18,16 @@ const GroupList = ({ showNotification, isAdmin = true }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Загружаем только при монтировании компонента
 
+  // Обновляем выбранную группу при изменении списка групп
+  useEffect(() => {
+    if (selectedGroup) {
+      const updatedGroup = groups.find(g => g.id === selectedGroup.id);
+      if (updatedGroup) {
+        setSelectedGroup(updatedGroup);
+      }
+    }
+  }, [groups, selectedGroup]);
+
   const handleDelete = async (id, name) => {
     if (window.confirm(`Удалить группу "${name}"?`)) {
       try {
@@ -89,7 +99,10 @@ const GroupList = ({ showNotification, isAdmin = true }) => {
         <Modal onClose={() => setShowForm(false)} size="lg">
           <GroupForm
             students={students}
-            onClose={() => setShowForm(false)}
+            onClose={async () => {
+              await loadGroups();
+              setShowForm(false);
+            }}
             showNotification={showNotification}
           />
         </Modal>
@@ -100,7 +113,10 @@ const GroupList = ({ showNotification, isAdmin = true }) => {
           <GroupForm
             group={editingGroup}
             students={students}
-            onClose={() => setEditingGroup(null)}
+            onClose={async () => {
+              await loadGroups();
+              setEditingGroup(null);
+            }}
             showNotification={showNotification}
           />
         </Modal>
