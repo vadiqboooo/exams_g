@@ -15,7 +15,8 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ReplyKeyboardRemove
+    ReplyKeyboardRemove,
+    BotCommand
 )
 
 # Настройка логирования
@@ -65,18 +66,42 @@ async def get_active_probnik() -> Optional[Dict]:
     return result
 
 
-def get_exam_dates_from_probnik(probnik: Dict) -> List[tuple]:
-    """Получение дат экзаменов из пробника"""
-    if not probnik or not probnik.get("exam_dates"):
+def get_exam_dates_from_probnik(probnik: Dict, school: str = None) -> List[tuple]:
+    """Получение дат экзаменов из пробника для конкретной школы"""
+    if not probnik:
         return []
-    return [(d["label"], d["date"]) for d in probnik["exam_dates"]]
+    
+    # Если указана школа, используем специфичные для школы даты
+    if school:
+        if school == "Байкальская" and probnik.get("exam_dates_baikalskaya"):
+            return [(d["label"], d["date"]) for d in probnik["exam_dates_baikalskaya"]]
+        elif school == "Лермонтова" and probnik.get("exam_dates_lermontova"):
+            return [(d["label"], d["date"]) for d in probnik["exam_dates_lermontova"]]
+    
+    # Если специфичных дат нет, используем общие
+    if probnik.get("exam_dates"):
+        return [(d["label"], d["date"]) for d in probnik["exam_dates"]]
+    
+    return []
 
 
-def get_exam_times_from_probnik(probnik: Dict) -> List[str]:
-    """Получение времени экзаменов из пробника"""
-    if not probnik or not probnik.get("exam_times"):
+def get_exam_times_from_probnik(probnik: Dict, school: str = None) -> List[str]:
+    """Получение времени экзаменов из пробника для конкретной школы"""
+    if not probnik:
         return ["9:00", "12:00"]
-    return probnik["exam_times"]
+    
+    # Если указана школа, используем специфичное для школы время
+    if school:
+        if school == "Байкальская" and probnik.get("exam_times_baikalskaya"):
+            return probnik["exam_times_baikalskaya"]
+        elif school == "Лермонтова" and probnik.get("exam_times_lermontova"):
+            return probnik["exam_times_lermontova"]
+    
+    # Если специфичного времени нет, используем общее
+    if probnik.get("exam_times"):
+        return probnik["exam_times"]
+    
+    return ["9:00", "12:00"]
 
 
 async def make_api_request(method: str, endpoint: str, data: Optional[Dict] = None) -> Optional[Dict]:
@@ -171,6 +196,20 @@ async def ensure_user_data(user_id: int) -> bool:
     return True
 
 
+def format_probnik_info(probnik: Optional[Dict]) -> str:
+    """Форматирование информации о пробнике"""
+    if not probnik:
+        return ""
+    
+    info_lines = []
+    probnik_name = probnik.get("name", "Пробник")
+    info_lines.append(f"📋 Текущий пробник: {probnik_name}\n")
+    
+
+    
+    return "\n".join(info_lines) + "\n" if info_lines else ""
+
+
 async def start_command(message: Message, state: FSMContext):
     """Обработчик команды /start"""
     user = message.from_user
@@ -179,6 +218,9 @@ async def start_command(message: Message, state: FSMContext):
     
     # Проверяем, есть ли активный пробник
     probnik = await get_active_probnik()
+    
+    # Формируем информацию о пробнике
+    probnik_info = format_probnik_info(probnik)
     
     # Проверяем, есть ли уже привязанный студент
     student_result = await make_api_request("GET", f"/telegram/student-by-user-id/{user_id}")
@@ -210,6 +252,11 @@ async def start_command(message: Message, state: FSMContext):
         registrations_result = await make_api_request("GET", f"/telegram/student-registrations/{student_id}")
         existing_count = len(registrations_result) if registrations_result else 0
         
+        # Получаем максимальное количество записей из пробника
+        max_registrations = 4  # Значение по умолчанию
+        if probnik:
+            max_registrations = probnik.get("max_registrations", 4)
+        
         # Сохраняем данные в user_data для продолжения
         user_data[user_id] = {
             "student_id": student_id,
@@ -217,10 +264,17 @@ async def start_command(message: Message, state: FSMContext):
             "fio": fio
         }
         
-        if existing_count >= 4:
-            # Уже записался на 4 экзамена
+        if existing_count >= max_registrations:
+            # Уже записался на максимальное количество экзаменов
             message_text = (
                 f"Привет, {user.first_name}! 👋\n\n"
+            )
+            
+            # Добавляем информацию о пробнике, если есть
+            if probnik_info:
+                message_text += probnik_info + "\n"
+            
+            message_text += (
                 f"Вы уже зарегистрированы как {fio}.\n\n"
                 "Ваши записи на экзамены:\n\n"
             )
@@ -228,7 +282,7 @@ async def start_command(message: Message, state: FSMContext):
                 for reg in registrations_result:
                     school_info = f" ({reg.get('school', 'не указана')})" if reg.get('school') else ""
                     message_text += f"• {reg['subject']} - {reg['exam_date']} в {reg['exam_time']}{school_info}\n"
-            message_text += "\nВы уже записались на максимальное количество экзаменов (4)."
+            message_text += f"\nВы уже записались на максимальное количество экзаменов ({max_registrations})."
             
             await message.answer(message_text)
             await state.clear()
@@ -237,8 +291,15 @@ async def start_command(message: Message, state: FSMContext):
             # Можно еще записаться
             message_text = (
                 f"Привет, {user.first_name}! 👋\n\n"
+            )
+            
+            # Добавляем информацию о пробнике, если есть
+            if probnik_info:
+                message_text += probnik_info + "\n"
+            
+            message_text += (
                 f"Вы уже зарегистрированы как {fio}.\n"
-                f"У вас записано экзаменов: {existing_count}/4\n\n"
+                f"У вас записано экзаменов: {existing_count}/{max_registrations}\n\n"
                 "Хотите записаться еще на экзамен?"
             )
             
@@ -255,7 +316,14 @@ async def start_command(message: Message, state: FSMContext):
     # Новый пользователь - показываем приветствие
     welcome_message = (
         f"Привет, {user.first_name}! 👋\n\n"
-        "Это бот школы Гарри, который поможет вам записаться на зимний пробник.\n\n"
+    )
+    
+    # Добавляем информацию о пробнике, если есть
+    if probnik_info:
+        welcome_message += probnik_info + "\n"
+    
+    welcome_message += (
+        "Это бот школы Гарри, который поможет вам записаться на пробник.\n\n"
         "Я помогу вам:\n"
         "• Найти вашу запись в базе данных\n"
         "• Выбрать предметы для экзамена\n"
@@ -654,8 +722,14 @@ async def show_subjects(message_or_callback, state: FSMContext, user_id: Optiona
     registrations_result = await make_api_request("GET", f"/telegram/student-registrations/{student_id}")
     existing_count = len(registrations_result) if registrations_result else 0
     
-    if existing_count >= 4:
-        message_text = "Вы уже записались на 4 экзамена. Это максимальное количество."
+    # Получаем максимальное количество записей из пробника
+    probnik = await get_active_probnik()
+    max_registrations = 4  # Значение по умолчанию
+    if probnik:
+        max_registrations = probnik.get("max_registrations", 4)
+    
+    if existing_count >= max_registrations:
+        message_text = f"Вы уже записались на {max_registrations} экзаменов. Это максимальное количество."
         if isinstance(message_or_callback, CallbackQuery):
             await message_or_callback.message.edit_text(message_text)
         else:
@@ -728,38 +802,21 @@ async def handle_subject_selection(callback: CallbackQuery, state: FSMContext):
     
     user_data[user_id]["current_subject"] = subject
     
-    # Получаем даты из активного пробника
-    probnik = await get_active_probnik()
-    exam_dates = get_exam_dates_from_probnik(probnik)
-    
-    if not exam_dates:
-        await callback.message.edit_text("Ошибка: даты экзаменов не настроены. Обратитесь к администратору.")
-        await state.clear()
-        return
-    
-    # Показываем доступные даты
-    message_text = f"Вы выбрали: {subject}\n\nВыберите дату экзамена:"
-    keyboard = []
-    for date_label, date_value in exam_dates:
-        # Форматируем дату для отображения (2026-01-05 -> 05.01.2026)
-        try:
-            from datetime import datetime
-            date_obj = datetime.strptime(date_value, "%Y-%m-%d")
-            formatted_date = date_obj.strftime("%d.%m.%Y")
-        except:
-            formatted_date = date_value
-        display_text = f"{date_label} ({formatted_date})"
-        keyboard.append([InlineKeyboardButton(text=display_text, callback_data=f"date_{date_value}")])
-    
+    # Показываем выбор школы (сначала выбираем школу, потом даты)
+    message_text = f"Вы выбрали: {subject}\n\nВыберите школу:"
+    keyboard = [
+        [InlineKeyboardButton(text="Лермонтова", callback_data="school_Лермонтова")],
+        [InlineKeyboardButton(text="Байкальская", callback_data="school_Байкальская")]
+    ]
     keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_subjects")])
     reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     await callback.message.edit_text(message_text, reply_markup=reply_markup)
     
-    await state.set_state(RegistrationStates.waiting_for_date)
+    await state.set_state(RegistrationStates.waiting_for_school)
 
 
 async def handle_date_selection(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора даты"""
+    """Обработка выбора даты - показываем время для выбранной школы"""
     await callback.answer()
     
     user_id = callback.from_user.id
@@ -771,20 +828,93 @@ async def handle_date_selection(callback: CallbackQuery, state: FSMContext):
         return
     
     date = callback.data.replace("date_", "")
-    
     user_data[user_id]["current_date"] = date
     
-    # Показываем выбор школы перед выбором времени
-    message_text = f"Вы выбрали дату: {date}\n\nВыберите школу:"
-    keyboard = [
-        [InlineKeyboardButton(text="Лермонтова", callback_data="school_Лермонтова")],
-        [InlineKeyboardButton(text="Байкальская", callback_data="school_Байкальская")]
-    ]
+    school = user_data[user_id].get("current_school")
+    if not school:
+        await callback.message.edit_text("Ошибка: школа не выбрана. Пожалуйста, начните регистрацию заново.")
+        await state.clear()
+        return
+    
+    student_id = user_data[user_id].get("student_id")
+    if not student_id:
+        await callback.message.edit_text("Ошибка: студент не найден. Пожалуйста, начните регистрацию заново.")
+        await state.clear()
+        return
+    
+    # Получаем существующие записи для проверки занятых времен
+    registrations_result = await make_api_request("GET", f"/telegram/student-registrations/{student_id}")
+    
+    # Проверяем доступные слоты с учетом школы
+    slots_result = await make_api_request("GET", f"/telegram/available-slots/{date}?school={school}")
+    
+    # Получаем времена из пробника для выбранной школы
+    probnik = await get_active_probnik()
+    exam_times = get_exam_times_from_probnik(probnik, school)
+    
+    message_text = f"Вы выбрали дату: {date}\nШкола: {school}\n\nВыберите время экзамена:"
+    keyboard = []
+    
+    # Проверяем, есть ли уже записи на эту дату и время для данного ученика
+    existing_registrations = {}
+    if registrations_result:
+        for reg in registrations_result:
+            reg_date = reg.get("exam_date", "")
+            reg_time = reg.get("exam_time", "")
+            reg_school = reg.get("school", "")
+            # Нормализуем дату для сравнения (может быть в разных форматах)
+            if reg_date:
+                # Если дата содержит время, берем только дату
+                if "T" in reg_date:
+                    reg_date = reg_date.split("T")[0]
+                # Сравниваем даты
+                if reg_date == date and reg_school == school:
+                    existing_registrations[reg_time] = True
+    
+    if slots_result:
+        slots = slots_result.get("slots", {})
+        for time in exam_times:
+            # Проверяем, есть ли уже запись на это время
+            has_registration = existing_registrations.get(time, False)
+            
+            slot_info = slots.get(time, {})
+            available = slot_info.get("available", 0)
+            
+            if has_registration:
+                # Показываем галочку для уже записанного времени
+                keyboard.append([InlineKeyboardButton(
+                    text=f"✅ {time} (уже записан)",
+                    callback_data="time_already_booked"
+                )])
+            elif available > 0:
+                keyboard.append([InlineKeyboardButton(
+                    text=f"{time} (свободно: {available})",
+                    callback_data=f"time_{time}"
+                )])
+            else:
+                keyboard.append([InlineKeyboardButton(
+                    text=f"{time} (занято)",
+                    callback_data="time_full"
+                )])
+    else:
+        for time in exam_times:
+            # Проверяем, есть ли уже запись на это время
+            has_registration = existing_registrations.get(time, False)
+            
+            if has_registration:
+                # Показываем галочку для уже записанного времени
+                keyboard.append([InlineKeyboardButton(
+                    text=f"✅ {time} (уже записан)",
+                    callback_data="time_already_booked"
+                )])
+            else:
+                keyboard.append([InlineKeyboardButton(text=time, callback_data=f"time_{time}")])
+    
     keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_dates")])
     reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     await callback.message.edit_text(message_text, reply_markup=reply_markup)
     
-    await state.set_state(RegistrationStates.waiting_for_school)
+    await state.set_state(RegistrationStates.waiting_for_time)
 
 
 async def handle_date_already_booked(callback: CallbackQuery, state: FSMContext):
@@ -806,7 +936,7 @@ async def back_to_subjects_callback(callback: CallbackQuery, state: FSMContext):
 
 
 async def back_to_dates_callback(callback: CallbackQuery, state: FSMContext):
-    """Возврат к выбору даты"""
+    """Возврат к выбору даты для выбранной школы"""
     await callback.answer()
     
     user_id = callback.from_user.id
@@ -818,17 +948,24 @@ async def back_to_dates_callback(callback: CallbackQuery, state: FSMContext):
         return
     
     subject = user_data[user_id].get("current_subject")
-    if not subject:
-        await callback.message.edit_text("Ошибка: предмет не выбран. Пожалуйста, начните регистрацию заново.")
+    school = user_data[user_id].get("current_school")
+    
+    if not subject or not school:
+        await callback.message.edit_text("Ошибка: предмет или школа не выбраны. Пожалуйста, начните регистрацию заново.")
         await state.clear()
         return
     
-    # Получаем даты из пробника
+    # Получаем даты из пробника для выбранной школы
     probnik = await get_active_probnik()
-    exam_dates = get_exam_dates_from_probnik(probnik)
+    exam_dates = get_exam_dates_from_probnik(probnik, school)
     
-    # Показываем доступные даты
-    message_text = f"Вы выбрали: {subject}\n\nВыберите дату экзамена:"
+    if not exam_dates:
+        await callback.message.edit_text(f"Ошибка: даты экзаменов для школы '{school}' не настроены. Обратитесь к администратору.")
+        await state.clear()
+        return
+    
+    # Показываем доступные даты для выбранной школы
+    message_text = f"Вы выбрали: {subject}\nШкола: {school}\n\nВыберите дату экзамена:"
     keyboard = []
     for date_label, date_value in exam_dates:
         # Форматируем дату для отображения
@@ -841,7 +978,7 @@ async def back_to_dates_callback(callback: CallbackQuery, state: FSMContext):
         display_text = f"{date_label} ({formatted_date})"
         keyboard.append([InlineKeyboardButton(text=display_text, callback_data=f"date_{date_value}")])
     
-    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_subjects")])
+    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_schools")])
     reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     await callback.message.edit_text(message_text, reply_markup=reply_markup)
     
@@ -860,27 +997,32 @@ async def back_to_school_callback(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         return
     
-    date = user_data[user_id].get("current_date")
-    if not date:
-        await callback.message.edit_text("Ошибка: дата не выбрана. Пожалуйста, начните регистрацию заново.")
+    subject = user_data[user_id].get("current_subject")
+    if not subject:
+        await callback.message.edit_text("Ошибка: предмет не выбран. Пожалуйста, начните регистрацию заново.")
         await state.clear()
         return
     
     # Показываем выбор школы
-    message_text = f"Вы выбрали дату: {date}\n\nВыберите школу:"
+    message_text = f"Вы выбрали: {subject}\n\nВыберите школу:"
     keyboard = [
         [InlineKeyboardButton(text="Лермонтова", callback_data="school_Лермонтова")],
         [InlineKeyboardButton(text="Байкальская", callback_data="school_Байкальская")]
     ]
-    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_dates")])
+    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_subjects")])
     reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     await callback.message.edit_text(message_text, reply_markup=reply_markup)
     
     await state.set_state(RegistrationStates.waiting_for_school)
 
 
+async def back_to_schools_callback(callback: CallbackQuery, state: FSMContext):
+    """Возврат к выбору школы (алиас для back_to_school)"""
+    await back_to_school_callback(callback, state)
+
+
 async def handle_school_selection(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора школы"""
+    """Обработка выбора школы - показываем даты для выбранной школы"""
     await callback.answer()
     
     user_id = callback.from_user.id
@@ -894,79 +1036,40 @@ async def handle_school_selection(callback: CallbackQuery, state: FSMContext):
     school = callback.data.replace("school_", "")
     user_data[user_id]["current_school"] = school
     
-    student_id = user_data[user_id].get("student_id")
-    date = user_data[user_id].get("current_date")
-    
-    if not student_id or not date:
-        await callback.message.edit_text("Ошибка: неполные данные. Пожалуйста, начните регистрацию заново.")
+    subject = user_data[user_id].get("current_subject")
+    if not subject:
+        await callback.message.edit_text("Ошибка: предмет не выбран. Пожалуйста, начните регистрацию заново.")
         await state.clear()
         return
     
-    # Получаем существующие записи для проверки занятых времен
-    registrations_result = await make_api_request("GET", f"/telegram/student-registrations/{student_id}")
-    
-    # Проверяем доступные слоты с учетом школы
-    slots_result = await make_api_request("GET", f"/telegram/available-slots/{date}?school={school}")
-    
-    # Получаем времена из пробника
+    # Получаем даты из пробника для выбранной школы
     probnik = await get_active_probnik()
-    exam_times = get_exam_times_from_probnik(probnik)
+    exam_dates = get_exam_dates_from_probnik(probnik, school)
     
-    message_text = f"Вы выбрали школу: {school}\n\nВыберите время экзамена:"
+    if not exam_dates:
+        await callback.message.edit_text(f"Ошибка: даты экзаменов для школы '{school}' не настроены. Обратитесь к администратору.")
+        await state.clear()
+        return
+    
+    # Показываем доступные даты для выбранной школы
+    message_text = f"Вы выбрали: {subject}\nШкола: {school}\n\nВыберите дату экзамена:"
     keyboard = []
+    for date_label, date_value in exam_dates:
+        # Форматируем дату для отображения (2026-01-05 -> 05.01.2026)
+        try:
+            from datetime import datetime
+            date_obj = datetime.strptime(date_value, "%Y-%m-%d")
+            formatted_date = date_obj.strftime("%d.%m.%Y")
+        except:
+            formatted_date = date_value
+        display_text = f"{date_label} ({formatted_date})"
+        keyboard.append([InlineKeyboardButton(text=display_text, callback_data=f"date_{date_value}")])
     
-    if slots_result:
-        slots = slots_result.get("slots", {})
-        for time in exam_times:
-            # Проверяем, есть ли уже запись на это время
-            has_registration = False
-            if registrations_result:
-                has_registration = any(
-                    r.get("exam_date") == date and r.get("exam_time") == time 
-                    for r in registrations_result
-                )
-            
-            if has_registration:
-                keyboard.append([InlineKeyboardButton(
-                    text=f"✅ {time} (уже записан)",
-                    callback_data="time_already_booked"
-                )])
-            else:
-                slot_info = slots.get(time, {})
-                available = slot_info.get("available", 0)
-                if available > 0:
-                    keyboard.append([InlineKeyboardButton(
-                        text=f"{time} (свободно: {available})",
-                        callback_data=f"time_{time}"
-                    )])
-                else:
-                    keyboard.append([InlineKeyboardButton(
-                        text=f"{time} (занято)",
-                        callback_data="time_full"
-                    )])
-    else:
-        for time in exam_times:
-            # Проверяем, есть ли уже запись на это время
-            has_registration = False
-            if registrations_result:
-                has_registration = any(
-                    r.get("exam_date") == date and r.get("exam_time") == time 
-                    for r in registrations_result
-                )
-            
-            if has_registration:
-                keyboard.append([InlineKeyboardButton(
-                    text=f"✅ {time} (уже записан)",
-                    callback_data="time_already_booked"
-                )])
-            else:
-                keyboard.append([InlineKeyboardButton(text=time, callback_data=f"time_{time}")])
-    
-    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_school")])
+    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_schools")])
     reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     await callback.message.edit_text(message_text, reply_markup=reply_markup)
     
-    await state.set_state(RegistrationStates.waiting_for_time)
+    await state.set_state(RegistrationStates.waiting_for_date)
 
 
 async def handle_time_selection(callback: CallbackQuery, state: FSMContext):
@@ -1001,26 +1104,40 @@ async def handle_time_selection(callback: CallbackQuery, state: FSMContext):
     registrations_result = await make_api_request("GET", f"/telegram/student-registrations/{student_id}")
     if registrations_result:
         for reg in registrations_result:
-            if reg.get("exam_date") == date and reg.get("exam_time") == time:
+            reg_date = reg.get("exam_date", "")
+            reg_time = reg.get("exam_time", "")
+            reg_school = reg.get("school", "")
+            # Нормализуем дату для сравнения
+            if reg_date:
+                if "T" in reg_date:
+                    reg_date = reg_date.split("T")[0]
+            if reg_date == date and reg_time == time and reg_school == school:
                 # Уже есть запись на эту дату и время
                 await callback.answer("У вас уже есть запись на это время в этот день. Выберите другое время.", show_alert=True)
-                # Возвращаем к выбору времени
+                # Возвращаем к выбору времени с галочками
                 slots_result = await make_api_request("GET", f"/telegram/available-slots/{date}?school={school}")
                 probnik = await get_active_probnik()
-                exam_times = get_exam_times_from_probnik(probnik)
-                message_text = f"Вы выбрали школу: {school}\n\nВыберите время экзамена:"
+                exam_times = get_exam_times_from_probnik(probnik, school)
+                message_text = f"Вы выбрали дату: {date}\nШкола: {school}\n\nВыберите время экзамена:"
                 keyboard = []
+                
+                # Создаем словарь существующих записей
+                existing_registrations = {}
+                for r in registrations_result:
+                    r_date = r.get("exam_date", "")
+                    if r_date:
+                        if "T" in r_date:
+                            r_date = r_date.split("T")[0]
+                    if r_date == date and r.get("school") == school:
+                        existing_registrations[r.get("exam_time")] = True
                 
                 if slots_result:
                     slots = slots_result.get("slots", {})
                     for time_option in exam_times:
+                        has_registration = existing_registrations.get(time_option, False)
                         slot_info = slots.get(time_option, {})
                         available = slot_info.get("available", 0)
-                        # Проверяем, есть ли уже запись на это время
-                        has_registration = any(
-                            r.get("exam_date") == date and r.get("exam_time") == time_option 
-                            for r in registrations_result
-                        )
+                        
                         if has_registration:
                             keyboard.append([InlineKeyboardButton(
                                 text=f"✅ {time_option} (уже записан)",
@@ -1038,10 +1155,7 @@ async def handle_time_selection(callback: CallbackQuery, state: FSMContext):
                             )])
                 else:
                     for time_option in exam_times:
-                        has_registration = any(
-                            r.get("exam_date") == date and r.get("exam_time") == time_option 
-                            for r in registrations_result
-                        )
+                        has_registration = existing_registrations.get(time_option, False)
                         if has_registration:
                             keyboard.append([InlineKeyboardButton(
                                 text=f"✅ {time_option} (уже записан)",
@@ -1050,7 +1164,7 @@ async def handle_time_selection(callback: CallbackQuery, state: FSMContext):
                         else:
                             keyboard.append([InlineKeyboardButton(text=time_option, callback_data=f"time_{time_option}")])
                 
-                keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_school")])
+                keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_dates")])
                 reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
                 await callback.message.edit_text(message_text, reply_markup=reply_markup)
                 return
@@ -1200,7 +1314,13 @@ async def view_registrations_callback(callback: CallbackQuery, state: FSMContext
         await state.clear()
         return
     
-    # Получаем все записи
+    # Получаем активный пробник для получения max_registrations
+    probnik = await get_active_probnik()
+    max_registrations = 4  # Значение по умолчанию
+    if probnik:
+        max_registrations = probnik.get("max_registrations", 4)
+    
+    # Получаем записи (уже отфильтрованные по активному пробнику в backend)
     registrations_result = await make_api_request("GET", f"/telegram/student-registrations/{student_id}")
     
     if registrations_result:
@@ -1208,7 +1328,7 @@ async def view_registrations_callback(callback: CallbackQuery, state: FSMContext
         for reg in registrations_result:
             school_info = f" ({reg.get('school', 'не указана')})" if reg.get('school') else ""
             message_text += f"• {reg['subject']} - {reg['exam_date']} в {reg['exam_time']}{school_info}\n"
-        message_text += f"\nВсего записей: {len(registrations_result)}/4"
+        message_text += f"\nВсего записей: {len(registrations_result)}/{max_registrations}"
     else:
         message_text = "У вас пока нет записей на экзамены."
     
@@ -1321,18 +1441,140 @@ async def handle_edit_registration_selection(callback: CallbackQuery, state: FSM
 
 
 async def handle_edit_change_datetime(callback: CallbackQuery, state: FSMContext):
-    """Изменение даты/времени записи"""
+    """Изменение даты/времени записи - сначала выбираем школу"""
     await callback.answer()
     
     user_id = callback.from_user.id
     subject = user_data[user_id].get("edit_subject", "экзамен")
     
-    # Получаем даты из пробника
-    probnik = await get_active_probnik()
-    exam_dates = get_exam_dates_from_probnik(probnik)
+    # Показываем выбор школы
+    message_text = f"Выберите школу для {subject}:"
+    keyboard = [
+        [InlineKeyboardButton(text="Лермонтова", callback_data="edit_school_Лермонтова")],
+        [InlineKeyboardButton(text="Байкальская", callback_data="edit_school_Байкальская")]
+    ]
+    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data=f"edit_reg_{user_data[user_id].get('edit_registration_id')}")])
+    reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+    await callback.message.edit_text(message_text, reply_markup=reply_markup)
     
-    # Показываем выбор новой даты
-    message_text = f"Выберите новую дату для {subject}:"
+    await state.set_state(RegistrationStates.waiting_for_edit_school)
+
+
+async def handle_edit_date_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора новой даты при редактировании - показываем время для выбранной школы"""
+    await callback.answer()
+    
+    user_id = callback.from_user.id
+    date = callback.data.replace("edit_date_", "")
+    
+    user_data[user_id]["edit_new_date"] = date
+    
+    school = user_data[user_id].get("edit_new_school")
+    if not school:
+        await callback.message.edit_text("Ошибка: школа не выбрана. Пожалуйста, начните редактирование заново.")
+        await state.clear()
+        return
+    
+    # Получаем времена из пробника для выбранной школы
+    probnik = await get_active_probnik()
+    exam_times = get_exam_times_from_probnik(probnik, school)
+    
+    # Получаем существующие записи для проверки занятых времен
+    registration_id = user_data[user_id].get("edit_registration_id")
+    student_id = user_data[user_id].get("student_id")
+    existing_registrations = {}
+    
+    if student_id:
+        registrations_result = await make_api_request("GET", f"/telegram/student-registrations/{student_id}")
+        if registrations_result:
+            for reg in registrations_result:
+                # Пропускаем текущую редактируемую запись
+                if reg.get("id") == registration_id:
+                    continue
+                reg_date = reg.get("exam_date", "")
+                reg_time = reg.get("exam_time", "")
+                reg_school = reg.get("school", "")
+                # Нормализуем дату для сравнения
+                if reg_date:
+                    if "T" in reg_date:
+                        reg_date = reg_date.split("T")[0]
+                    if reg_date == date and reg_school == school:
+                        existing_registrations[reg_time] = True
+    
+    # Показываем выбор времени
+    message_text = f"Вы выбрали дату: {date}\nШкола: {school}\n\nВыберите время:"
+    keyboard = []
+    
+    # Проверяем доступные слоты с учетом школы
+    slots_result = await make_api_request("GET", f"/telegram/available-slots/{date}?school={school}")
+    
+    if slots_result:
+        slots = slots_result.get("slots", {})
+        for time in exam_times:
+            # Проверяем, есть ли уже запись на это время
+            has_registration = existing_registrations.get(time, False)
+            
+            slot_info = slots.get(time, {})
+            available = slot_info.get("available", 0)
+            
+            if has_registration:
+                # Показываем галочку для уже записанного времени
+                keyboard.append([InlineKeyboardButton(
+                    text=f"✅ {time} (уже записан)",
+                    callback_data="time_already_booked"
+                )])
+            elif available > 0:
+                keyboard.append([InlineKeyboardButton(
+                    text=f"{time} (свободно: {available})",
+                    callback_data=f"edit_time_{time}"
+                )])
+            else:
+                keyboard.append([InlineKeyboardButton(
+                    text=f"{time} (занято)",
+                    callback_data="time_full"
+                )])
+    else:
+        for time in exam_times:
+            # Проверяем, есть ли уже запись на это время
+            has_registration = existing_registrations.get(time, False)
+            
+            if has_registration:
+                # Показываем галочку для уже записанного времени
+                keyboard.append([InlineKeyboardButton(
+                    text=f"✅ {time} (уже записан)",
+                    callback_data="time_already_booked"
+                )])
+            else:
+                keyboard.append([InlineKeyboardButton(text=time, callback_data=f"edit_time_{time}")])
+    
+    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data=f"edit_school_{school}")])
+    reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+    await callback.message.edit_text(message_text, reply_markup=reply_markup)
+    
+    await state.set_state(RegistrationStates.waiting_for_edit_time)
+
+
+async def handle_edit_school_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора школы при редактировании - показываем даты для выбранной школы"""
+    await callback.answer()
+    
+    user_id = callback.from_user.id
+    school = callback.data.replace("edit_school_", "")
+    
+    user_data[user_id]["edit_new_school"] = school
+    subject = user_data[user_id].get("edit_subject", "экзамен")
+    
+    # Получаем даты из пробника для выбранной школы
+    probnik = await get_active_probnik()
+    exam_dates = get_exam_dates_from_probnik(probnik, school)
+    
+    if not exam_dates:
+        await callback.message.edit_text(f"Ошибка: даты экзаменов для школы '{school}' не настроены. Обратитесь к администратору.")
+        await state.clear()
+        return
+    
+    # Показываем выбор даты для выбранной школы
+    message_text = f"Школа: {school}\n\nВыберите дату для {subject}:"
     keyboard = []
     for date_label, date_value in exam_dates:
         # Форматируем дату для отображения
@@ -1345,80 +1587,11 @@ async def handle_edit_change_datetime(callback: CallbackQuery, state: FSMContext
         display_text = f"{date_label} ({formatted_date})"
         keyboard.append([InlineKeyboardButton(text=display_text, callback_data=f"edit_date_{date_value}")])
     
-    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data=f"edit_reg_{user_data[user_id].get('edit_registration_id')}")])
-    reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    await callback.message.edit_text(message_text, reply_markup=reply_markup)
-    
-    await state.set_state(RegistrationStates.waiting_for_edit_date)
-
-
-async def handle_edit_date_selection(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора новой даты при редактировании"""
-    await callback.answer()
-    
-    user_id = callback.from_user.id
-    date = callback.data.replace("edit_date_", "")
-    
-    user_data[user_id]["edit_new_date"] = date
-    
-    # Показываем выбор школы
-    message_text = f"Вы выбрали дату: {date}\n\nВыберите школу:"
-    keyboard = [
-        [InlineKeyboardButton(text="Лермонтова", callback_data="edit_school_Лермонтова")],
-        [InlineKeyboardButton(text="Байкальская", callback_data="edit_school_Байкальская")]
-    ]
     keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data="edit_change_datetime")])
     reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     await callback.message.edit_text(message_text, reply_markup=reply_markup)
     
-    await state.set_state(RegistrationStates.waiting_for_edit_school)
-
-
-async def handle_edit_school_selection(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора школы при редактировании"""
-    await callback.answer()
-    
-    user_id = callback.from_user.id
-    school = callback.data.replace("edit_school_", "")
-    
-    user_data[user_id]["edit_new_school"] = school
-    date = user_data[user_id].get("edit_new_date")
-    
-    # Получаем времена из пробника
-    probnik = await get_active_probnik()
-    exam_times = get_exam_times_from_probnik(probnik)
-    
-    # Показываем выбор времени
-    message_text = f"Вы выбрали школу: {school}\n\nВыберите время:"
-    keyboard = []
-    
-    # Проверяем доступные слоты с учетом школы
-    slots_result = await make_api_request("GET", f"/telegram/available-slots/{date}?school={school}")
-    
-    if slots_result:
-        slots = slots_result.get("slots", {})
-        for time in exam_times:
-            slot_info = slots.get(time, {})
-            available = slot_info.get("available", 0)
-            if available > 0:
-                keyboard.append([InlineKeyboardButton(
-                    text=f"{time} (свободно: {available})",
-                    callback_data=f"edit_time_{time}"
-                )])
-            else:
-                keyboard.append([InlineKeyboardButton(
-                    text=f"{time} (занято)",
-                    callback_data="time_full"
-                )])
-    else:
-        for time in exam_times:
-            keyboard.append([InlineKeyboardButton(text=time, callback_data=f"edit_time_{time}")])
-    
-    keyboard.append([InlineKeyboardButton(text="◀️ Назад", callback_data=f"edit_date_{date}")])
-    reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    await callback.message.edit_text(message_text, reply_markup=reply_markup)
-    
-    await state.set_state(RegistrationStates.waiting_for_edit_time)
+    await state.set_state(RegistrationStates.waiting_for_edit_date)
 
 
 async def handle_edit_time_selection(callback: CallbackQuery, state: FSMContext):
@@ -1547,6 +1720,12 @@ async def back_to_start_callback(callback: CallbackQuery, state: FSMContext):
         registrations_result = await make_api_request("GET", f"/telegram/student-registrations/{student_id}")
         existing_count = len(registrations_result) if registrations_result else 0
         
+        # Получаем максимальное количество записей из пробника
+        probnik = await get_active_probnik()
+        max_registrations = 4  # Значение по умолчанию
+        if probnik:
+            max_registrations = probnik.get("max_registrations", 4)
+        
         # Сохраняем данные в user_data для продолжения
         user_data[user_id] = {
             "student_id": student_id,
@@ -1554,8 +1733,8 @@ async def back_to_start_callback(callback: CallbackQuery, state: FSMContext):
             "fio": fio
         }
         
-        if existing_count >= 4:
-            # Уже записался на 4 экзамена
+        if existing_count >= max_registrations:
+            # Уже записался на максимальное количество экзаменов
             message_text = (
                 f"Привет, {user.first_name}! 👋\n\n"
                 f"Вы уже зарегистрированы как {fio}.\n\n"
@@ -1565,7 +1744,7 @@ async def back_to_start_callback(callback: CallbackQuery, state: FSMContext):
                 for reg in registrations_result:
                     school_info = f" ({reg.get('school', 'не указана')})" if reg.get('school') else ""
                     message_text += f"• {reg['subject']} - {reg['exam_date']} в {reg['exam_time']}{school_info}\n"
-            message_text += "\nВы уже записались на максимальное количество экзаменов (4)."
+            message_text += f"\nВы уже записались на максимальное количество экзаменов ({max_registrations})."
             
             await callback.message.edit_text(message_text)
             await state.clear()
@@ -1828,6 +2007,15 @@ async def main():
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     
+    # Устанавливаем команды меню (боковое меню)
+    try:
+        await bot.set_my_commands([
+            BotCommand(command="start", description="🔄 Обновить бота")
+        ])
+        logger.info("Команды меню установлены")
+    except Exception as e:
+        logger.error(f"Ошибка при установке команд меню: {e}")
+    
     # Регистрируем обработчики команд
     dp.message.register(start_command, CommandStart())
     dp.message.register(cancel_command, Command("cancel"))
@@ -1843,6 +2031,7 @@ async def main():
     dp.callback_query.register(back_to_subjects_callback, F.data == "back_to_subjects")
     dp.callback_query.register(back_to_dates_callback, F.data == "back_to_dates")
     dp.callback_query.register(back_to_school_callback, F.data == "back_to_school")
+    dp.callback_query.register(back_to_schools_callback, F.data == "back_to_schools")
     dp.callback_query.register(handle_date_selection, F.data.startswith("date_"))
     dp.callback_query.register(handle_school_selection, F.data.startswith("school_"))
     dp.callback_query.register(handle_time_already_booked, F.data == "time_already_booked")

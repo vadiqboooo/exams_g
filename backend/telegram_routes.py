@@ -273,7 +273,12 @@ async def get_active_probnik(db: AsyncSession = Depends(get_db)):
         "slots_baikalskaya": probnik.slots_baikalskaya,
         "slots_lermontova": probnik.slots_lermontova,
         "exam_dates": probnik.exam_dates,
-        "exam_times": probnik.exam_times
+        "exam_times": probnik.exam_times,
+        "exam_dates_baikalskaya": probnik.exam_dates_baikalskaya,
+        "exam_dates_lermontova": probnik.exam_dates_lermontova,
+        "exam_times_baikalskaya": probnik.exam_times_baikalskaya,
+        "exam_times_lermontova": probnik.exam_times_lermontova,
+        "max_registrations": probnik.max_registrations if probnik.max_registrations is not None else 4
     }
 
 
@@ -311,14 +316,23 @@ async def register_exam(
     probnik_result = await db.execute(select(Probnik).where(Probnik.is_active == True))
     active_probnik = probnik_result.scalar_one_or_none()
     
-    # Проверяем, что ученик не записался уже на 4 экзамена
-    existing_registrations = await db.execute(
-        select(ExamRegistration).where(ExamRegistration.student_id == registration.student_id)
-    )
-    existing_count = len(existing_registrations.scalars().all())
+    # Получаем максимальное количество записей из активного пробника
+    max_registrations = 4  # Значение по умолчанию
+    if active_probnik:
+        max_registrations = active_probnik.max_registrations if active_probnik.max_registrations is not None else 4
     
-    if existing_count >= 4:
-        raise HTTPException(status_code=400, detail="Можно записаться максимум на 4 экзамена")
+    # Проверяем, что ученик не записался уже на максимальное количество экзаменов для активного пробника
+    if active_probnik:
+        existing_registrations = await db.execute(
+            select(ExamRegistration).where(
+                ExamRegistration.student_id == registration.student_id,
+                ExamRegistration.probnik_id == active_probnik.id
+            )
+        )
+        existing_count = len(existing_registrations.scalars().all())
+        
+        if existing_count >= max_registrations:
+            raise HTTPException(status_code=400, detail=f"Можно записаться максимум на {max_registrations} экзаменов")
     
     # Парсим дату и время
     try:
@@ -326,29 +340,42 @@ async def register_exam(
     except ValueError:
         raise HTTPException(status_code=400, detail="Некорректный формат даты. Используйте YYYY-MM-DD")
     
-    # Проверяем количество записей на этот день и время
-    count_result = await db.execute(
-        select(ExamRegistration).where(
+    # Проверяем количество записей на этот день и время для активного пробника
+    if active_probnik:
+        count_query = select(ExamRegistration).where(
             ExamRegistration.exam_date == exam_date_obj,
-            ExamRegistration.exam_time == registration.exam_time
+            ExamRegistration.exam_time == registration.exam_time,
+            ExamRegistration.probnik_id == active_probnik.id
         )
-    )
-    registrations_count = len(count_result.scalars().all())
-    
-    if registrations_count >= 45:
-        raise HTTPException(status_code=400, detail="На это время нет свободных мест")
-    
-    # Проверяем, что ученик не записался уже на этот же экзамен
-    duplicate_result = await db.execute(
-        select(ExamRegistration).where(
-            ExamRegistration.student_id == registration.student_id,
-            ExamRegistration.subject == registration.subject,
-            ExamRegistration.exam_date == exam_date_obj,
-            ExamRegistration.exam_time == registration.exam_time
+        if registration.school:
+            count_query = count_query.where(ExamRegistration.school == registration.school)
+        
+        count_result = await db.execute(count_query)
+        registrations_count = len(count_result.scalars().all())
+        
+        # Определяем лимит из пробника
+        limit = 45  # Значение по умолчанию
+        if registration.school:
+            if registration.school == "Байкальская" and active_probnik.slots_baikalskaya:
+                limit = active_probnik.slots_baikalskaya.get(registration.exam_time, 45)
+            elif registration.school == "Лермонтова" and active_probnik.slots_lermontova:
+                limit = active_probnik.slots_lermontova.get(registration.exam_time, 45)
+        
+        if registrations_count >= limit:
+            raise HTTPException(status_code=400, detail="На это время нет свободных мест")
+        
+        # Проверяем, что ученик не записался уже на этот же экзамен в этом пробнике
+        duplicate_result = await db.execute(
+            select(ExamRegistration).where(
+                ExamRegistration.student_id == registration.student_id,
+                ExamRegistration.subject == registration.subject,
+                ExamRegistration.exam_date == exam_date_obj,
+                ExamRegistration.exam_time == registration.exam_time,
+                ExamRegistration.probnik_id == active_probnik.id
+            )
         )
-    )
-    if duplicate_result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Вы уже записаны на этот экзамен")
+        if duplicate_result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Вы уже записаны на этот экзамен")
     
     # Создаем запись (exam_date хранится как DateTime, но используем только дату)
     exam_datetime = datetime.combine(exam_date_obj, datetime.min.time())
@@ -390,13 +417,24 @@ async def get_available_slots(date: str, school: str = None, db: AsyncSession = 
     probnik_result = await db.execute(select(Probnik).where(Probnik.is_active == True))
     probnik = probnik_result.scalar_one_or_none()
     
-    # Определяем времена и лимиты из пробника
+    # Определяем времена и лимиты из пробника с учетом школы
     times = ["9:00", "12:00"]
     default_limit = 45
     
     if probnik:
-        if probnik.exam_times:
-            times = probnik.exam_times
+        # Если указана школа, используем специфичные для школы времена
+        if school:
+            if school == "Байкальская" and probnik.exam_times_baikalskaya:
+                times = probnik.exam_times_baikalskaya
+            elif school == "Лермонтова" and probnik.exam_times_lermontova:
+                times = probnik.exam_times_lermontova
+            # Если специфичных времен нет, используем общие
+            elif probnik.exam_times:
+                times = probnik.exam_times
+        else:
+            # Если школа не указана, используем общие времена
+            if probnik.exam_times:
+                times = probnik.exam_times
     
     slots = {}
     
@@ -404,11 +442,23 @@ async def get_available_slots(date: str, school: str = None, db: AsyncSession = 
         # Создаем datetime для сравнения
         exam_datetime = datetime.combine(exam_date, datetime.min.time())
         
-        # Считаем записи с учетом школы если указана
+        # Считаем записи с учетом школы и активного пробника
         query = select(ExamRegistration).where(
             ExamRegistration.exam_date == exam_datetime,
             ExamRegistration.exam_time == time
         )
+        
+        # Фильтруем по активному пробнику
+        if probnik:
+            query = query.where(ExamRegistration.probnik_id == probnik.id)
+        else:
+            # Если нет активного пробника, возвращаем пустые слоты
+            slots[time] = {
+                "registered": 0,
+                "available": 0
+            }
+            continue
+        
         if school:
             query = query.where(ExamRegistration.school == school)
         
@@ -435,10 +485,23 @@ async def get_student_registrations(
     student_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """Получение всех записей ученика"""
-    result = await db.execute(
-        select(ExamRegistration).where(ExamRegistration.student_id == student_id)
-    )
+    """Получение записей ученика для активного пробника"""
+    # Получаем активный пробник
+    probnik_result = await db.execute(select(Probnik).where(Probnik.is_active == True))
+    active_probnik = probnik_result.scalar_one_or_none()
+    
+    # Если есть активный пробник, фильтруем записи по нему
+    if active_probnik:
+        result = await db.execute(
+            select(ExamRegistration).where(
+                ExamRegistration.student_id == student_id,
+                ExamRegistration.probnik_id == active_probnik.id
+            )
+        )
+    else:
+        # Если нет активного пробника, возвращаем пустой список
+        return []
+    
     registrations = result.scalars().all()
     
     result_list = []

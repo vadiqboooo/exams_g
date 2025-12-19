@@ -681,6 +681,15 @@ async def get_all_probniks(
     
     response = []
     for p in probniks:
+        # Преобразуем exam_dates_baikalskaya и exam_dates_lermontova если есть
+        exam_dates_baikalskaya_dict = None
+        if p.exam_dates_baikalskaya:
+            exam_dates_baikalskaya_dict = [{"label": d["label"], "date": d["date"]} for d in p.exam_dates_baikalskaya] if isinstance(p.exam_dates_baikalskaya, list) else p.exam_dates_baikalskaya
+        
+        exam_dates_lermontova_dict = None
+        if p.exam_dates_lermontova:
+            exam_dates_lermontova_dict = [{"label": d["label"], "date": d["date"]} for d in p.exam_dates_lermontova] if isinstance(p.exam_dates_lermontova, list) else p.exam_dates_lermontova
+        
         response.append(schemas.ProbnikResponse(
             id=p.id,
             name=p.name,
@@ -689,7 +698,12 @@ async def get_all_probniks(
             slots_baikalskaya=p.slots_baikalskaya,
             slots_lermontova=p.slots_lermontova,
             exam_dates=p.exam_dates,
-            exam_times=p.exam_times
+            exam_times=p.exam_times,
+            exam_dates_baikalskaya=exam_dates_baikalskaya_dict,
+            exam_dates_lermontova=exam_dates_lermontova_dict,
+            exam_times_baikalskaya=p.exam_times_baikalskaya,
+            exam_times_lermontova=p.exam_times_lermontova,
+            max_registrations=p.max_registrations if p.max_registrations is not None else 4
         ))
     return response
 
@@ -703,6 +717,15 @@ async def get_active_probnik(db: AsyncSession = Depends(get_db)):
     if not probnik:
         return None
     
+    # Преобразуем exam_dates_baikalskaya и exam_dates_lermontova если есть
+    exam_dates_baikalskaya_dict = None
+    if probnik.exam_dates_baikalskaya:
+        exam_dates_baikalskaya_dict = [{"label": d["label"], "date": d["date"]} for d in probnik.exam_dates_baikalskaya] if isinstance(probnik.exam_dates_baikalskaya, list) else probnik.exam_dates_baikalskaya
+    
+    exam_dates_lermontova_dict = None
+    if probnik.exam_dates_lermontova:
+        exam_dates_lermontova_dict = [{"label": d["label"], "date": d["date"]} for d in probnik.exam_dates_lermontova] if isinstance(probnik.exam_dates_lermontova, list) else probnik.exam_dates_lermontova
+    
     return schemas.ProbnikResponse(
         id=probnik.id,
         name=probnik.name,
@@ -711,7 +734,12 @@ async def get_active_probnik(db: AsyncSession = Depends(get_db)):
         slots_baikalskaya=probnik.slots_baikalskaya,
         slots_lermontova=probnik.slots_lermontova,
         exam_dates=probnik.exam_dates,
-        exam_times=probnik.exam_times
+        exam_times=probnik.exam_times,
+        exam_dates_baikalskaya=exam_dates_baikalskaya_dict,
+        exam_dates_lermontova=exam_dates_lermontova_dict,
+        exam_times_baikalskaya=probnik.exam_times_baikalskaya,
+        exam_times_lermontova=probnik.exam_times_lermontova,
+        max_registrations=probnik.max_registrations if probnik.max_registrations is not None else 4
     )
 
 
@@ -739,13 +767,25 @@ async def create_probnik(
     if probnik.exam_dates:
         exam_dates_dict = [{"label": d.label, "date": d.date} for d in probnik.exam_dates]
     
+    exam_dates_baikalskaya_dict = None
+    if probnik.exam_dates_baikalskaya:
+        exam_dates_baikalskaya_dict = [{"label": d.label, "date": d.date} for d in probnik.exam_dates_baikalskaya]
+    
+    exam_dates_lermontova_dict = None
+    if probnik.exam_dates_lermontova:
+        exam_dates_lermontova_dict = [{"label": d.label, "date": d.date} for d in probnik.exam_dates_lermontova]
+    
     db_probnik = Probnik(
         name=probnik.name,
         is_active=probnik.is_active,
         slots_baikalskaya=probnik.slots_baikalskaya,
         slots_lermontova=probnik.slots_lermontova,
         exam_dates=exam_dates_dict,
-        exam_times=probnik.exam_times
+        exam_times=probnik.exam_times,
+        exam_dates_baikalskaya=exam_dates_baikalskaya_dict,
+        exam_dates_lermontova=exam_dates_lermontova_dict,
+        exam_times_baikalskaya=probnik.exam_times_baikalskaya,
+        exam_times_lermontova=probnik.exam_times_lermontova
     )
     db.add(db_probnik)
     await db.commit()
@@ -759,7 +799,12 @@ async def create_probnik(
         slots_baikalskaya=db_probnik.slots_baikalskaya,
         slots_lermontova=db_probnik.slots_lermontova,
         exam_dates=db_probnik.exam_dates,
-        exam_times=db_probnik.exam_times
+        exam_times=db_probnik.exam_times,
+        exam_dates_baikalskaya=db_probnik.exam_dates_baikalskaya,
+        exam_dates_lermontova=db_probnik.exam_dates_lermontova,
+        exam_times_baikalskaya=db_probnik.exam_times_baikalskaya,
+        exam_times_lermontova=db_probnik.exam_times_lermontova,
+        max_registrations=db_probnik.max_registrations if db_probnik.max_registrations is not None else 4
     )
 
 
@@ -796,11 +841,28 @@ async def update_probnik(
     if 'exam_dates' in update_data and update_data['exam_dates']:
         update_data['exam_dates'] = [{"label": d.label, "date": d.date} for d in probnik_update.exam_dates]
     
+    # Преобразуем exam_dates_baikalskaya если есть
+    if 'exam_dates_baikalskaya' in update_data and update_data['exam_dates_baikalskaya']:
+        update_data['exam_dates_baikalskaya'] = [{"label": d.label, "date": d.date} for d in probnik_update.exam_dates_baikalskaya]
+    
+    # Преобразуем exam_dates_lermontova если есть
+    if 'exam_dates_lermontova' in update_data and update_data['exam_dates_lermontova']:
+        update_data['exam_dates_lermontova'] = [{"label": d.label, "date": d.date} for d in probnik_update.exam_dates_lermontova]
+    
     for field, value in update_data.items():
         setattr(probnik, field, value)
     
     await db.commit()
     await db.refresh(probnik)
+    
+    # Преобразуем exam_dates_baikalskaya и exam_dates_lermontova если есть
+    exam_dates_baikalskaya_dict = None
+    if probnik.exam_dates_baikalskaya:
+        exam_dates_baikalskaya_dict = [{"label": d["label"], "date": d["date"]} for d in probnik.exam_dates_baikalskaya] if isinstance(probnik.exam_dates_baikalskaya, list) else probnik.exam_dates_baikalskaya
+    
+    exam_dates_lermontova_dict = None
+    if probnik.exam_dates_lermontova:
+        exam_dates_lermontova_dict = [{"label": d["label"], "date": d["date"]} for d in probnik.exam_dates_lermontova] if isinstance(probnik.exam_dates_lermontova, list) else probnik.exam_dates_lermontova
     
     return schemas.ProbnikResponse(
         id=probnik.id,
@@ -810,7 +872,12 @@ async def update_probnik(
         slots_baikalskaya=probnik.slots_baikalskaya,
         slots_lermontova=probnik.slots_lermontova,
         exam_dates=probnik.exam_dates,
-        exam_times=probnik.exam_times
+        exam_times=probnik.exam_times,
+        exam_dates_baikalskaya=exam_dates_baikalskaya_dict,
+        exam_dates_lermontova=exam_dates_lermontova_dict,
+        exam_times_baikalskaya=probnik.exam_times_baikalskaya,
+        exam_times_lermontova=probnik.exam_times_lermontova,
+        max_registrations=probnik.max_registrations if probnik.max_registrations is not None else 4
     )
 
 

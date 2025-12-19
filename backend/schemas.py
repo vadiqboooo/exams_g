@@ -427,6 +427,12 @@ class ProbnikCreate(BaseModel):
     slots_lermontova: Optional[Dict[str, int]] = None
     exam_dates: Optional[List[ProbnikDateItem]] = None
     exam_times: Optional[List[str]] = None  # ["9:00", "12:00"]
+    # Отдельные дни и время для каждого филиала
+    exam_dates_baikalskaya: Optional[List[ProbnikDateItem]] = None
+    exam_dates_lermontova: Optional[List[ProbnikDateItem]] = None
+    exam_times_baikalskaya: Optional[List[str]] = None
+    exam_times_lermontova: Optional[List[str]] = None
+    max_registrations: Optional[int] = 4  # Максимальное количество записей на одного ученика
 
 class ProbnikUpdate(BaseModel):
     name: Optional[str] = None
@@ -435,6 +441,12 @@ class ProbnikUpdate(BaseModel):
     slots_lermontova: Optional[Dict[str, int]] = None
     exam_dates: Optional[List[ProbnikDateItem]] = None
     exam_times: Optional[List[str]] = None
+    # Отдельные дни и время для каждого филиала
+    exam_dates_baikalskaya: Optional[List[ProbnikDateItem]] = None
+    exam_dates_lermontova: Optional[List[ProbnikDateItem]] = None
+    exam_times_baikalskaya: Optional[List[str]] = None
+    exam_times_lermontova: Optional[List[str]] = None
+    max_registrations: Optional[int] = None
 
 class ProbnikResponse(BaseModel):
     id: int
@@ -445,6 +457,12 @@ class ProbnikResponse(BaseModel):
     slots_lermontova: Optional[Dict[str, int]] = None
     exam_dates: Optional[List[ProbnikDateItem]] = None
     exam_times: Optional[List[str]] = None
+    # Отдельные дни и время для каждого филиала
+    exam_dates_baikalskaya: Optional[List[ProbnikDateItem]] = None
+    exam_dates_lermontova: Optional[List[ProbnikDateItem]] = None
+    exam_times_baikalskaya: Optional[List[str]] = None
+    exam_times_lermontova: Optional[List[str]] = None
+    max_registrations: Optional[int] = 4
     
     class Config:
         from_attributes = True

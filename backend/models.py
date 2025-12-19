@@ -129,4 +129,15 @@ class Probnik(Base):
     # Время проведения: ["9:00", "12:00"]
     exam_times = Column(JSON, nullable=True)
     
+    # Отдельные дни для каждого филиала
+    exam_dates_baikalskaya = Column(JSON, nullable=True)
+    exam_dates_lermontova = Column(JSON, nullable=True)
+    
+    # Отдельное время для каждого филиала
+    exam_times_baikalskaya = Column(JSON, nullable=True)
+    exam_times_lermontova = Column(JSON, nullable=True)
+    
+    # Максимальное количество записей на одного ученика
+    max_registrations = Column(Integer, default=4, nullable=True)
+    
     registrations = relationship("ExamRegistration", back_populates="probnik") 
