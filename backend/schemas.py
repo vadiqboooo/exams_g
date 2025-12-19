@@ -419,6 +419,7 @@ class ExamRegistrationUpdate(BaseModel):
 class ProbnikDateItem(BaseModel):
     label: str  # "Понедельник 5.01.26"
     date: str   # "2026-01-05"
+    times: Optional[List[str]] = None  # ["9:00", "12:00"] - время для этого дня
 
 class ProbnikCreate(BaseModel):
     name: str

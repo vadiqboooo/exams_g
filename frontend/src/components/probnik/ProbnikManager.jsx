@@ -14,10 +14,8 @@ const ProbnikManager = ({ showNotification }) => {
     is_active: false,
     slots_baikalskaya: {},
     slots_lermontova: {},
-    exam_dates_baikalskaya: [],
-    exam_dates_lermontova: [],
-    exam_times_baikalskaya: [],
-    exam_times_lermontova: [],
+    exam_dates_baikalskaya: [], // [{label, date, times: [], slots: {}}]
+    exam_dates_lermontova: [], // [{label, date, times: [], slots: {}}]
     max_registrations: 4
   });
 
@@ -25,9 +23,8 @@ const ProbnikManager = ({ showNotification }) => {
   const [newDateBaikalskaya, setNewDateBaikalskaya] = useState({ label: '', date: '' });
   const [newDateLermontova, setNewDateLermontova] = useState({ label: '', date: '' });
   
-  // Новые времена для добавления
-  const [newTimeBaikalskaya, setNewTimeBaikalskaya] = useState('');
-  const [newTimeLermontova, setNewTimeLermontova] = useState('');
+  // Новые времена для добавления (для каждого дня отдельно)
+  const [newTimeForDate, setNewTimeForDate] = useState({ school: '', dateIndex: -1, time: '' });
 
   const fetchProbniks = async () => {
     try {
@@ -58,14 +55,11 @@ const ProbnikManager = ({ showNotification }) => {
       slots_lermontova: {},
       exam_dates_baikalskaya: [],
       exam_dates_lermontova: [],
-      exam_times_baikalskaya: [],
-      exam_times_lermontova: [],
       max_registrations: 4
     });
     setNewDateBaikalskaya({ label: '', date: '' });
     setNewDateLermontova({ label: '', date: '' });
-    setNewTimeBaikalskaya('');
-    setNewTimeLermontova('');
+    setNewTimeForDate({ school: '', dateIndex: -1, time: '' });
     setEditingProbnik(null);
   };
 
@@ -77,37 +71,73 @@ const ProbnikManager = ({ showNotification }) => {
   const handleEdit = (probnik) => {
     setEditingProbnik(probnik);
     
-    // Инициализируем времена для каждого филиала
-    const timesBaikalskaya = probnik.exam_times_baikalskaya || probnik.exam_times || [];
-    const timesLermontova = probnik.exam_times_lermontova || probnik.exam_times || [];
+    // Инициализируем даты с временами и слотами
+    const datesBaikalskaya = (probnik.exam_dates_baikalskaya || []).map(d => ({
+      label: d.label || '',
+      date: d.date || '',
+      times: d.times || [],
+      slots: {}
+    }));
     
-    // Инициализируем слоты на основе времен
+    const datesLermontova = (probnik.exam_dates_lermontova || []).map(d => ({
+      label: d.label || '',
+      date: d.date || '',
+      times: d.times || [],
+      slots: {}
+    }));
+    
+    // Заполняем слоты из общего объекта slots_baikalskaya/slots_lermontova
+    // Для обратной совместимости: если есть старые exam_times_baikalskaya, используем их
+    const oldTimesBaikalskaya = probnik.exam_times_baikalskaya || probnik.exam_times || [];
+    const oldTimesLermontova = probnik.exam_times_lermontova || probnik.exam_times || [];
+    
+    // Если у дат нет времен, но есть старые времена, добавляем их
+    datesBaikalskaya.forEach(dateItem => {
+      if (!dateItem.times || dateItem.times.length === 0) {
+        dateItem.times = [...oldTimesBaikalskaya];
+      }
+      // Заполняем слоты из slots_baikalskaya
+      dateItem.times.forEach(time => {
+        if (probnik.slots_baikalskaya && probnik.slots_baikalskaya[time] !== undefined) {
+          dateItem.slots[time] = probnik.slots_baikalskaya[time];
+        } else {
+          dateItem.slots[time] = 0;
+        }
+      });
+    });
+    
+    datesLermontova.forEach(dateItem => {
+      if (!dateItem.times || dateItem.times.length === 0) {
+        dateItem.times = [...oldTimesLermontova];
+      }
+      // Заполняем слоты из slots_lermontova
+      dateItem.times.forEach(time => {
+        if (probnik.slots_lermontova && probnik.slots_lermontova[time] !== undefined) {
+          dateItem.slots[time] = probnik.slots_lermontova[time];
+        } else {
+          dateItem.slots[time] = 0;
+        }
+      });
+    });
+    
+    // Создаем общие объекты слотов для обратной совместимости
     const slotsBaikalskaya = {};
     const slotsLermontova = {};
     
-    if (probnik.slots_baikalskaya) {
-      Object.keys(probnik.slots_baikalskaya).forEach(time => {
-        slotsBaikalskaya[time] = probnik.slots_baikalskaya[time];
+    datesBaikalskaya.forEach(dateItem => {
+      dateItem.times.forEach(time => {
+        if (dateItem.slots[time] !== undefined) {
+          slotsBaikalskaya[time] = dateItem.slots[time];
+        }
       });
-    }
-    
-    if (probnik.slots_lermontova) {
-      Object.keys(probnik.slots_lermontova).forEach(time => {
-        slotsLermontova[time] = probnik.slots_lermontova[time];
-      });
-    }
-    
-    // Если времена заданы, но слотов нет, создаем пустые слоты
-    timesBaikalskaya.forEach(time => {
-      if (!slotsBaikalskaya[time]) {
-        slotsBaikalskaya[time] = 0;
-      }
     });
     
-    timesLermontova.forEach(time => {
-      if (!slotsLermontova[time]) {
-        slotsLermontova[time] = 0;
-      }
+    datesLermontova.forEach(dateItem => {
+      dateItem.times.forEach(time => {
+        if (dateItem.slots[time] !== undefined) {
+          slotsLermontova[time] = dateItem.slots[time];
+        }
+      });
     });
     
     setFormData({
@@ -115,10 +145,8 @@ const ProbnikManager = ({ showNotification }) => {
       is_active: probnik.is_active,
       slots_baikalskaya: slotsBaikalskaya,
       slots_lermontova: slotsLermontova,
-      exam_dates_baikalskaya: probnik.exam_dates_baikalskaya || [],
-      exam_dates_lermontova: probnik.exam_dates_lermontova || [],
-      exam_times_baikalskaya: timesBaikalskaya,
-      exam_times_lermontova: timesLermontova,
+      exam_dates_baikalskaya: datesBaikalskaya,
+      exam_dates_lermontova: datesLermontova,
       max_registrations: probnik.max_registrations || 4
     });
     setShowForm(true);
@@ -147,6 +175,32 @@ const ProbnikManager = ({ showNotification }) => {
     e.preventDefault();
     
     try {
+      // Преобразуем данные: создаем общие объекты слотов из слотов каждого дня
+      const slotsBaikalskaya = {};
+      const slotsLermontova = {};
+      
+      formData.exam_dates_baikalskaya.forEach(dateItem => {
+        dateItem.times.forEach(time => {
+          if (dateItem.slots[time] !== undefined) {
+            slotsBaikalskaya[time] = dateItem.slots[time];
+          }
+        });
+      });
+      
+      formData.exam_dates_lermontova.forEach(dateItem => {
+        dateItem.times.forEach(time => {
+          if (dateItem.slots[time] !== undefined) {
+            slotsLermontova[time] = dateItem.slots[time];
+          }
+        });
+      });
+      
+      const submitData = {
+        ...formData,
+        slots_baikalskaya: slotsBaikalskaya,
+        slots_lermontova: slotsLermontova
+      };
+      
       const token = localStorage.getItem('token');
       const url = editingProbnik 
         ? `${API_BASE}/probnik/${editingProbnik.id}`
@@ -158,7 +212,7 @@ const ProbnikManager = ({ showNotification }) => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(submitData)
       });
       
       if (response.ok) {
@@ -185,7 +239,12 @@ const ProbnikManager = ({ showNotification }) => {
     const field = school === 'baikalskaya' ? 'exam_dates_baikalskaya' : 'exam_dates_lermontova';
     setFormData(prev => ({
       ...prev,
-      [field]: [...prev[field], { ...newDate }]
+      [field]: [...prev[field], { 
+        label: newDate.label, 
+        date: newDate.date,
+        times: [],
+        slots: {}
+      }]
     }));
     
     if (school === 'baikalskaya') {
@@ -203,65 +262,84 @@ const ProbnikManager = ({ showNotification }) => {
     }));
   };
 
-  const addTime = (school) => {
-    const newTime = school === 'baikalskaya' ? newTimeBaikalskaya : newTimeLermontova;
-    if (!newTime || !newTime.match(/^\d{1,2}:\d{2}$/)) {
+  const addTimeToDate = (school, dateIndex) => {
+    const time = newTimeForDate.time;
+    if (!time || !time.match(/^\d{1,2}:\d{2}$/)) {
       showNotification('Введите время в формате ЧЧ:ММ (например, 9:00)', 'error');
       return;
     }
     
-    const field = school === 'baikalskaya' ? 'exam_times_baikalskaya' : 'exam_times_lermontova';
-    const slotsField = school === 'baikalskaya' ? 'slots_baikalskaya' : 'slots_lermontova';
+    if (newTimeForDate.school !== school || newTimeForDate.dateIndex !== dateIndex) {
+      setNewTimeForDate({ school, dateIndex, time: '' });
+      return;
+    }
+    
+    const field = school === 'baikalskaya' ? 'exam_dates_baikalskaya' : 'exam_dates_lermontova';
     
     setFormData(prev => {
+      const dates = [...prev[field]];
+      const dateItem = { ...dates[dateIndex] };
+      
       // Проверяем, нет ли уже такого времени
-      if (prev[field].includes(newTime)) {
-        showNotification('Это время уже добавлено', 'error');
+      if (dateItem.times.includes(time)) {
+        showNotification('Это время уже добавлено для этого дня', 'error');
         return prev;
       }
       
-      return {
-        ...prev,
-        [field]: [...prev[field], newTime],
-        [slotsField]: {
-          ...prev[slotsField],
-          [newTime]: 0
-        }
-      };
-    });
-    
-    if (school === 'baikalskaya') {
-      setNewTimeBaikalskaya('');
-    } else {
-      setNewTimeLermontova('');
-    }
-  };
-
-  const removeTime = (school, time) => {
-    const field = school === 'baikalskaya' ? 'exam_times_baikalskaya' : 'exam_times_lermontova';
-    const slotsField = school === 'baikalskaya' ? 'slots_baikalskaya' : 'slots_lermontova';
-    
-    setFormData(prev => {
-      const newSlots = { ...prev[slotsField] };
-      delete newSlots[time];
+      dateItem.times = [...dateItem.times, time];
+      dateItem.slots = { ...dateItem.slots, [time]: 0 };
+      
+      dates[dateIndex] = dateItem;
       
       return {
         ...prev,
-        [field]: prev[field].filter(t => t !== time),
-        [slotsField]: newSlots
+        [field]: dates
+      };
+    });
+    
+    setNewTimeForDate({ school: '', dateIndex: -1, time: '' });
+  };
+
+  const removeTimeFromDate = (school, dateIndex, time) => {
+    const field = school === 'baikalskaya' ? 'exam_dates_baikalskaya' : 'exam_dates_lermontova';
+    
+    setFormData(prev => {
+      const dates = [...prev[field]];
+      const dateItem = { ...dates[dateIndex] };
+      
+      dateItem.times = dateItem.times.filter(t => t !== time);
+      const newSlots = { ...dateItem.slots };
+      delete newSlots[time];
+      dateItem.slots = newSlots;
+      
+      dates[dateIndex] = dateItem;
+      
+      return {
+        ...prev,
+        [field]: dates
       };
     });
   };
 
-  const updateSlots = (school, time, value) => {
-    const field = school === 'baikalskaya' ? 'slots_baikalskaya' : 'slots_lermontova';
-    setFormData(prev => ({
-      ...prev,
-      [field]: {
-        ...prev[field],
+  const updateSlotsForDate = (school, dateIndex, time, value) => {
+    const field = school === 'baikalskaya' ? 'exam_dates_baikalskaya' : 'exam_dates_lermontova';
+    
+    setFormData(prev => {
+      const dates = [...prev[field]];
+      const dateItem = { ...dates[dateIndex] };
+      
+      dateItem.slots = {
+        ...dateItem.slots,
         [time]: parseInt(value) || 0
-      }
-    }));
+      };
+      
+      dates[dateIndex] = dateItem;
+      
+      return {
+        ...prev,
+        [field]: dates
+      };
+    });
   };
 
   if (loading) {
@@ -322,14 +400,6 @@ const ProbnikManager = ({ showNotification }) => {
                 
                 <div className="sub-section">
                   <h5>Дни проведения</h5>
-                  <div className="dates-list">
-                    {formData.exam_dates_baikalskaya.map((d, i) => (
-                      <div key={i} className="date-item">
-                        <span>{d.label} ({d.date})</span>
-                        <button type="button" onClick={() => removeDate('baikalskaya', i)} className="btn-remove">×</button>
-                      </div>
-                    ))}
-                  </div>
                   <div className="add-date-row">
                     <input
                       type="text"
@@ -344,48 +414,55 @@ const ProbnikManager = ({ showNotification }) => {
                     />
                     <button type="button" onClick={() => addDate('baikalskaya')} className="btn-add">+</button>
                   </div>
-                </div>
-
-                <div className="sub-section">
-                  <h5>Время проведения</h5>
-                  <div className="times-list">
-                    {formData.exam_times_baikalskaya.map(time => (
-                      <div key={time} className="time-item">
-                        <span>{time}</span>
-                        <button type="button" onClick={() => removeTime('baikalskaya', time)} className="btn-remove">×</button>
+                  
+                  {formData.exam_dates_baikalskaya.map((dateItem, dateIndex) => (
+                    <div key={dateIndex} className="date-with-times">
+                      <div className="date-header">
+                        <span className="date-label">{dateItem.label} ({dateItem.date})</span>
+                        <button type="button" onClick={() => removeDate('baikalskaya', dateIndex)} className="btn-remove">×</button>
                       </div>
-                    ))}
-                  </div>
-                  <div className="add-time-row">
-                    <input
-                      type="text"
-                      value={newTimeBaikalskaya}
-                      onChange={(e) => setNewTimeBaikalskaya(e.target.value)}
-                      placeholder="Время (например, 9:00)"
-                      pattern="\d{1,2}:\d{2}"
-                    />
-                    <button type="button" onClick={() => addTime('baikalskaya')} className="btn-add">+</button>
-                  </div>
-                </div>
-
-                <div className="sub-section">
-                  <h5>Места</h5>
-                  <div className="slots-row">
-                    {formData.exam_times_baikalskaya.map(time => (
-                      <div key={time} className="slot-input">
-                        <label>{time}</label>
-                        <input
-                          type="number"
-                          value={formData.slots_baikalskaya[time] || 0}
-                          onChange={(e) => updateSlots('baikalskaya', time, e.target.value)}
-                          min="0"
-                        />
+                      
+                      <div className="date-times-section">
+                        <h6>Время для этого дня:</h6>
+                        <div className="times-list">
+                          {dateItem.times.map(time => (
+                            <div key={time} className="time-item">
+                              <span>{time}</span>
+                              <button type="button" onClick={() => removeTimeFromDate('baikalskaya', dateIndex, time)} className="btn-remove">×</button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="add-time-row">
+                          <input
+                            type="text"
+                            value={newTimeForDate.school === 'baikalskaya' && newTimeForDate.dateIndex === dateIndex ? newTimeForDate.time : ''}
+                            onChange={(e) => setNewTimeForDate({ school: 'baikalskaya', dateIndex, time: e.target.value })}
+                            placeholder="Время (например, 9:00)"
+                            pattern="\d{1,2}:\d{2}"
+                          />
+                          <button type="button" onClick={() => addTimeToDate('baikalskaya', dateIndex)} className="btn-add">+</button>
+                        </div>
+                        
+                        <h6>Места для этого дня:</h6>
+                        <div className="slots-row">
+                          {dateItem.times.map(time => (
+                            <div key={time} className="slot-input">
+                              <label>{time}</label>
+                              <input
+                                type="number"
+                                value={dateItem.slots[time] || 0}
+                                onChange={(e) => updateSlotsForDate('baikalskaya', dateIndex, time, e.target.value)}
+                                min="0"
+                              />
+                            </div>
+                          ))}
+                          {dateItem.times.length === 0 && (
+                            <p className="no-slots-message">Добавьте время для этого дня</p>
+                          )}
+                        </div>
                       </div>
-                    ))}
-                    {formData.exam_times_baikalskaya.length === 0 && (
-                      <p className="no-slots-message">Добавьте время проведения, чтобы настроить места</p>
-                    )}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -395,14 +472,6 @@ const ProbnikManager = ({ showNotification }) => {
                 
                 <div className="sub-section">
                   <h5>Дни проведения</h5>
-                  <div className="dates-list">
-                    {formData.exam_dates_lermontova.map((d, i) => (
-                      <div key={i} className="date-item">
-                        <span>{d.label} ({d.date})</span>
-                        <button type="button" onClick={() => removeDate('lermontova', i)} className="btn-remove">×</button>
-                      </div>
-                    ))}
-                  </div>
                   <div className="add-date-row">
                     <input
                       type="text"
@@ -417,48 +486,55 @@ const ProbnikManager = ({ showNotification }) => {
                     />
                     <button type="button" onClick={() => addDate('lermontova')} className="btn-add">+</button>
                   </div>
-                </div>
-
-                <div className="sub-section">
-                  <h5>Время проведения</h5>
-                  <div className="times-list">
-                    {formData.exam_times_lermontova.map(time => (
-                      <div key={time} className="time-item">
-                        <span>{time}</span>
-                        <button type="button" onClick={() => removeTime('lermontova', time)} className="btn-remove">×</button>
+                  
+                  {formData.exam_dates_lermontova.map((dateItem, dateIndex) => (
+                    <div key={dateIndex} className="date-with-times">
+                      <div className="date-header">
+                        <span className="date-label">{dateItem.label} ({dateItem.date})</span>
+                        <button type="button" onClick={() => removeDate('lermontova', dateIndex)} className="btn-remove">×</button>
                       </div>
-                    ))}
-                  </div>
-                  <div className="add-time-row">
-                    <input
-                      type="text"
-                      value={newTimeLermontova}
-                      onChange={(e) => setNewTimeLermontova(e.target.value)}
-                      placeholder="Время (например, 9:00)"
-                      pattern="\d{1,2}:\d{2}"
-                    />
-                    <button type="button" onClick={() => addTime('lermontova')} className="btn-add">+</button>
-                  </div>
-                </div>
-
-                <div className="sub-section">
-                  <h5>Места</h5>
-                  <div className="slots-row">
-                    {formData.exam_times_lermontova.map(time => (
-                      <div key={time} className="slot-input">
-                        <label>{time}</label>
-                        <input
-                          type="number"
-                          value={formData.slots_lermontova[time] || 0}
-                          onChange={(e) => updateSlots('lermontova', time, e.target.value)}
-                          min="0"
-                        />
+                      
+                      <div className="date-times-section">
+                        <h6>Время для этого дня:</h6>
+                        <div className="times-list">
+                          {dateItem.times.map(time => (
+                            <div key={time} className="time-item">
+                              <span>{time}</span>
+                              <button type="button" onClick={() => removeTimeFromDate('lermontova', dateIndex, time)} className="btn-remove">×</button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="add-time-row">
+                          <input
+                            type="text"
+                            value={newTimeForDate.school === 'lermontova' && newTimeForDate.dateIndex === dateIndex ? newTimeForDate.time : ''}
+                            onChange={(e) => setNewTimeForDate({ school: 'lermontova', dateIndex, time: e.target.value })}
+                            placeholder="Время (например, 9:00)"
+                            pattern="\d{1,2}:\d{2}"
+                          />
+                          <button type="button" onClick={() => addTimeToDate('lermontova', dateIndex)} className="btn-add">+</button>
+                        </div>
+                        
+                        <h6>Места для этого дня:</h6>
+                        <div className="slots-row">
+                          {dateItem.times.map(time => (
+                            <div key={time} className="slot-input">
+                              <label>{time}</label>
+                              <input
+                                type="number"
+                                value={dateItem.slots[time] || 0}
+                                onChange={(e) => updateSlotsForDate('lermontova', dateIndex, time, e.target.value)}
+                                min="0"
+                              />
+                            </div>
+                          ))}
+                          {dateItem.times.length === 0 && (
+                            <p className="no-slots-message">Добавьте время для этого дня</p>
+                          )}
+                        </div>
                       </div>
-                    ))}
-                    {formData.exam_times_lermontova.length === 0 && (
-                      <p className="no-slots-message">Добавьте время проведения, чтобы настроить места</p>
-                    )}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -485,8 +561,6 @@ const ProbnikManager = ({ showNotification }) => {
           probniks.map(probnik => {
             const datesBaikalskaya = probnik.exam_dates_baikalskaya || [];
             const datesLermontova = probnik.exam_dates_lermontova || [];
-            const timesBaikalskaya = probnik.exam_times_baikalskaya || probnik.exam_times || [];
-            const timesLermontova = probnik.exam_times_lermontova || probnik.exam_times || [];
             
             return (
               <div key={probnik.id} className={`probnik-card ${probnik.is_active ? 'active' : ''}`}>
@@ -504,7 +578,9 @@ const ProbnikManager = ({ showNotification }) => {
                       {datesBaikalskaya.length > 0 ? (
                         <span> {datesBaikalskaya.map(d => {
                           const parts = d.date.split('-');
-                          return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : d.date;
+                          const formattedDate = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : d.date;
+                          const timesStr = d.times && d.times.length > 0 ? ` (${d.times.join(', ')})` : '';
+                          return `${d.label} ${formattedDate}${timesStr}`;
                         }).join(', ')}</span>
                       ) : (
                         <span> дни не указаны</span>
@@ -515,7 +591,9 @@ const ProbnikManager = ({ showNotification }) => {
                       {datesLermontova.length > 0 ? (
                         <span> {datesLermontova.map(d => {
                           const parts = d.date.split('-');
-                          return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : d.date;
+                          const formattedDate = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : d.date;
+                          const timesStr = d.times && d.times.length > 0 ? ` (${d.times.join(', ')})` : '';
+                          return `${d.label} ${formattedDate}${timesStr}`;
                         }).join(', ')}</span>
                       ) : (
                         <span> дни не указаны</span>

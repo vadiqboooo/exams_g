@@ -74,23 +74,39 @@ def get_exam_dates_from_probnik(probnik: Dict, school: str = None) -> List[tuple
     # Если указана школа, используем специфичные для школы даты
     if school:
         if school == "Байкальская" and probnik.get("exam_dates_baikalskaya"):
-            return [(d["label"], d["date"]) for d in probnik["exam_dates_baikalskaya"]]
+            return [(d["label"], d["date"], d.get("times", [])) for d in probnik["exam_dates_baikalskaya"]]
         elif school == "Лермонтова" and probnik.get("exam_dates_lermontova"):
-            return [(d["label"], d["date"]) for d in probnik["exam_dates_lermontova"]]
+            return [(d["label"], d["date"], d.get("times", [])) for d in probnik["exam_dates_lermontova"]]
     
     # Если специфичных дат нет, используем общие
     if probnik.get("exam_dates"):
-        return [(d["label"], d["date"]) for d in probnik["exam_dates"]]
+        return [(d["label"], d["date"], d.get("times", [])) for d in probnik["exam_dates"]]
     
     return []
 
 
-def get_exam_times_from_probnik(probnik: Dict, school: str = None) -> List[str]:
-    """Получение времени экзаменов из пробника для конкретной школы"""
+def get_exam_times_from_probnik(probnik: Dict, school: str = None, date: str = None) -> List[str]:
+    """Получение времени экзаменов из пробника для конкретной школы и даты"""
     if not probnik:
         return ["9:00", "12:00"]
     
-    # Если указана школа, используем специфичное для школы время
+    # Если указана дата, пытаемся получить время для этой конкретной даты
+    if date:
+        dates_list = None
+        if school:
+            if school == "Байкальская" and probnik.get("exam_dates_baikalskaya"):
+                dates_list = probnik["exam_dates_baikalskaya"]
+            elif school == "Лермонтова" and probnik.get("exam_dates_lermontova"):
+                dates_list = probnik["exam_dates_lermontova"]
+        else:
+            dates_list = probnik.get("exam_dates", [])
+        
+        if dates_list:
+            for d in dates_list:
+                if d.get("date") == date and d.get("times"):
+                    return d["times"]
+    
+    # Если указана школа, используем специфичное для школы время (fallback)
     if school:
         if school == "Байкальская" and probnik.get("exam_times_baikalskaya"):
             return probnik["exam_times_baikalskaya"]
@@ -848,9 +864,9 @@ async def handle_date_selection(callback: CallbackQuery, state: FSMContext):
     # Проверяем доступные слоты с учетом школы
     slots_result = await make_api_request("GET", f"/telegram/available-slots/{date}?school={school}")
     
-    # Получаем времена из пробника для выбранной школы
+    # Получаем времена из пробника для выбранной школы и даты
     probnik = await get_active_probnik()
-    exam_times = get_exam_times_from_probnik(probnik, school)
+    exam_times = get_exam_times_from_probnik(probnik, school, date)
     
     message_text = f"Вы выбрали дату: {date}\nШкола: {school}\n\nВыберите время экзамена:"
     keyboard = []
@@ -967,7 +983,12 @@ async def back_to_dates_callback(callback: CallbackQuery, state: FSMContext):
     # Показываем доступные даты для выбранной школы
     message_text = f"Вы выбрали: {subject}\nШкола: {school}\n\nВыберите дату экзамена:"
     keyboard = []
-    for date_label, date_value in exam_dates:
+    for date_item in exam_dates:
+        if len(date_item) >= 2:
+            date_label = date_item[0]
+            date_value = date_item[1]
+        else:
+            continue
         # Форматируем дату для отображения
         try:
             from datetime import datetime
@@ -1054,7 +1075,12 @@ async def handle_school_selection(callback: CallbackQuery, state: FSMContext):
     # Показываем доступные даты для выбранной школы
     message_text = f"Вы выбрали: {subject}\nШкола: {school}\n\nВыберите дату экзамена:"
     keyboard = []
-    for date_label, date_value in exam_dates:
+    for date_item in exam_dates:
+        if len(date_item) >= 2:
+            date_label = date_item[0]
+            date_value = date_item[1]
+        else:
+            continue
         # Форматируем дату для отображения (2026-01-05 -> 05.01.2026)
         try:
             from datetime import datetime
@@ -1117,7 +1143,7 @@ async def handle_time_selection(callback: CallbackQuery, state: FSMContext):
                 # Возвращаем к выбору времени с галочками
                 slots_result = await make_api_request("GET", f"/telegram/available-slots/{date}?school={school}")
                 probnik = await get_active_probnik()
-                exam_times = get_exam_times_from_probnik(probnik, school)
+                exam_times = get_exam_times_from_probnik(probnik, school, date)
                 message_text = f"Вы выбрали дату: {date}\nШкола: {school}\n\nВыберите время экзамена:"
                 keyboard = []
                 
@@ -1475,9 +1501,9 @@ async def handle_edit_date_selection(callback: CallbackQuery, state: FSMContext)
         await state.clear()
         return
     
-    # Получаем времена из пробника для выбранной школы
+    # Получаем времена из пробника для выбранной школы и даты
     probnik = await get_active_probnik()
-    exam_times = get_exam_times_from_probnik(probnik, school)
+    exam_times = get_exam_times_from_probnik(probnik, school, date)
     
     # Получаем существующие записи для проверки занятых времен
     registration_id = user_data[user_id].get("edit_registration_id")
@@ -1576,7 +1602,12 @@ async def handle_edit_school_selection(callback: CallbackQuery, state: FSMContex
     # Показываем выбор даты для выбранной школы
     message_text = f"Школа: {school}\n\nВыберите дату для {subject}:"
     keyboard = []
-    for date_label, date_value in exam_dates:
+    for date_item in exam_dates:
+        if len(date_item) >= 2:
+            date_label = date_item[0]
+            date_value = date_item[1]
+        else:
+            continue
         # Форматируем дату для отображения
         try:
             from datetime import datetime

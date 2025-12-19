@@ -417,24 +417,39 @@ async def get_available_slots(date: str, school: str = None, db: AsyncSession = 
     probnik_result = await db.execute(select(Probnik).where(Probnik.is_active == True))
     probnik = probnik_result.scalar_one_or_none()
     
-    # Определяем времена и лимиты из пробника с учетом школы
+    # Определяем времена и лимиты из пробника с учетом школы и даты
     times = ["9:00", "12:00"]
     default_limit = 45
     
     if probnik:
-        # Если указана школа, используем специфичные для школы времена
+        # Пытаемся найти времена для конкретной даты
+        dates_list = None
         if school:
-            if school == "Байкальская" and probnik.exam_times_baikalskaya:
-                times = probnik.exam_times_baikalskaya
-            elif school == "Лермонтова" and probnik.exam_times_lermontova:
-                times = probnik.exam_times_lermontova
-            # Если специфичных времен нет, используем общие
-            elif probnik.exam_times:
-                times = probnik.exam_times
-        else:
-            # Если школа не указана, используем общие времена
-            if probnik.exam_times:
-                times = probnik.exam_times
+            if school == "Байкальская" and probnik.exam_dates_baikalskaya:
+                dates_list = probnik.exam_dates_baikalskaya
+            elif school == "Лермонтова" and probnik.exam_dates_lermontova:
+                dates_list = probnik.exam_dates_lermontova
+        
+        if dates_list:
+            for d in dates_list:
+                if d.get("date") == date and d.get("times"):
+                    times = d["times"]
+                    break
+        
+        # Если не нашли времена для конкретной даты, используем fallback
+        if times == ["9:00", "12:00"]:
+            if school:
+                if school == "Байкальская" and probnik.exam_times_baikalskaya:
+                    times = probnik.exam_times_baikalskaya
+                elif school == "Лермонтова" and probnik.exam_times_lermontova:
+                    times = probnik.exam_times_lermontova
+                # Если специфичных времен нет, используем общие
+                elif probnik.exam_times:
+                    times = probnik.exam_times
+            else:
+                # Если школа не указана, используем общие времена
+                if probnik.exam_times:
+                    times = probnik.exam_times
     
     slots = {}
     

@@ -684,11 +684,29 @@ async def get_all_probniks(
         # Преобразуем exam_dates_baikalskaya и exam_dates_lermontova если есть
         exam_dates_baikalskaya_dict = None
         if p.exam_dates_baikalskaya:
-            exam_dates_baikalskaya_dict = [{"label": d["label"], "date": d["date"]} for d in p.exam_dates_baikalskaya] if isinstance(p.exam_dates_baikalskaya, list) else p.exam_dates_baikalskaya
+            if isinstance(p.exam_dates_baikalskaya, list):
+                exam_dates_baikalskaya_dict = [
+                    {
+                        "label": d.get("label", ""),
+                        "date": d.get("date", ""),
+                        "times": d.get("times", [])
+                    } for d in p.exam_dates_baikalskaya
+                ]
+            else:
+                exam_dates_baikalskaya_dict = p.exam_dates_baikalskaya
         
         exam_dates_lermontova_dict = None
         if p.exam_dates_lermontova:
-            exam_dates_lermontova_dict = [{"label": d["label"], "date": d["date"]} for d in p.exam_dates_lermontova] if isinstance(p.exam_dates_lermontova, list) else p.exam_dates_lermontova
+            if isinstance(p.exam_dates_lermontova, list):
+                exam_dates_lermontova_dict = [
+                    {
+                        "label": d.get("label", ""),
+                        "date": d.get("date", ""),
+                        "times": d.get("times", [])
+                    } for d in p.exam_dates_lermontova
+                ]
+            else:
+                exam_dates_lermontova_dict = p.exam_dates_lermontova
         
         response.append(schemas.ProbnikResponse(
             id=p.id,
@@ -769,11 +787,23 @@ async def create_probnik(
     
     exam_dates_baikalskaya_dict = None
     if probnik.exam_dates_baikalskaya:
-        exam_dates_baikalskaya_dict = [{"label": d.label, "date": d.date} for d in probnik.exam_dates_baikalskaya]
+        exam_dates_baikalskaya_dict = [
+            {
+                "label": d.label,
+                "date": d.date,
+                "times": d.times if hasattr(d, 'times') and d.times else []
+            } for d in probnik.exam_dates_baikalskaya
+        ]
     
     exam_dates_lermontova_dict = None
     if probnik.exam_dates_lermontova:
-        exam_dates_lermontova_dict = [{"label": d.label, "date": d.date} for d in probnik.exam_dates_lermontova]
+        exam_dates_lermontova_dict = [
+            {
+                "label": d.label,
+                "date": d.date,
+                "times": d.times if hasattr(d, 'times') and d.times else []
+            } for d in probnik.exam_dates_lermontova
+        ]
     
     db_probnik = Probnik(
         name=probnik.name,
@@ -843,11 +873,23 @@ async def update_probnik(
     
     # Преобразуем exam_dates_baikalskaya если есть
     if 'exam_dates_baikalskaya' in update_data and update_data['exam_dates_baikalskaya']:
-        update_data['exam_dates_baikalskaya'] = [{"label": d.label, "date": d.date} for d in probnik_update.exam_dates_baikalskaya]
+        update_data['exam_dates_baikalskaya'] = [
+            {
+                "label": d.label,
+                "date": d.date,
+                "times": d.times if hasattr(d, 'times') and d.times else []
+            } for d in probnik_update.exam_dates_baikalskaya
+        ]
     
     # Преобразуем exam_dates_lermontova если есть
     if 'exam_dates_lermontova' in update_data and update_data['exam_dates_lermontova']:
-        update_data['exam_dates_lermontova'] = [{"label": d.label, "date": d.date} for d in probnik_update.exam_dates_lermontova]
+        update_data['exam_dates_lermontova'] = [
+            {
+                "label": d.label,
+                "date": d.date,
+                "times": d.times if hasattr(d, 'times') and d.times else []
+            } for d in probnik_update.exam_dates_lermontova
+        ]
     
     for field, value in update_data.items():
         setattr(probnik, field, value)
@@ -858,11 +900,29 @@ async def update_probnik(
     # Преобразуем exam_dates_baikalskaya и exam_dates_lermontova если есть
     exam_dates_baikalskaya_dict = None
     if probnik.exam_dates_baikalskaya:
-        exam_dates_baikalskaya_dict = [{"label": d["label"], "date": d["date"]} for d in probnik.exam_dates_baikalskaya] if isinstance(probnik.exam_dates_baikalskaya, list) else probnik.exam_dates_baikalskaya
+        if isinstance(probnik.exam_dates_baikalskaya, list):
+            exam_dates_baikalskaya_dict = [
+                {
+                    "label": d.get("label", ""),
+                    "date": d.get("date", ""),
+                    "times": d.get("times", [])
+                } for d in probnik.exam_dates_baikalskaya
+            ]
+        else:
+            exam_dates_baikalskaya_dict = probnik.exam_dates_baikalskaya
     
     exam_dates_lermontova_dict = None
     if probnik.exam_dates_lermontova:
-        exam_dates_lermontova_dict = [{"label": d["label"], "date": d["date"]} for d in probnik.exam_dates_lermontova] if isinstance(probnik.exam_dates_lermontova, list) else probnik.exam_dates_lermontova
+        if isinstance(probnik.exam_dates_lermontova, list):
+            exam_dates_lermontova_dict = [
+                {
+                    "label": d.get("label", ""),
+                    "date": d.get("date", ""),
+                    "times": d.get("times", [])
+                } for d in probnik.exam_dates_lermontova
+            ]
+        else:
+            exam_dates_lermontova_dict = probnik.exam_dates_lermontova
     
     return schemas.ProbnikResponse(
         id=probnik.id,

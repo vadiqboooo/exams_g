@@ -175,6 +175,39 @@
   margin-bottom: 8px;
 }
 
+.date-with-times {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #ffffff;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.date-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.date-label {
+  font-weight: 600;
+  color: #333;
+}
+
+.date-times-section {
+  margin-top: 12px;
+}
+
+.date-times-section h6 {
+  margin: 12px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #555;
+}
+
 .dates-list {
   margin-bottom: 12px;
 }
