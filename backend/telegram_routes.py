@@ -605,73 +605,86 @@ async def get_pending_notifications(db: AsyncSession = Depends(get_db)):
     )
     students = confirmed_students.scalars().all()
     
+    # Получаем активный пробник
+    probnik_result = await db.execute(select(Probnik).where(Probnik.is_active == True))
+    active_probnik = probnik_result.scalar_one_or_none()
+    
     notifications_24h = []
-    for student in students:
-        # Проверяем, есть ли у студента записи
-        registrations_result = await db.execute(
-            select(ExamRegistration).where(ExamRegistration.student_id == student.id)
-        )
-        registrations = registrations_result.scalars().all()
-        
-        # Если нет записей и прошло более 24 часов с подтверждения
-        if not registrations:
-            notifications_24h.append({
-                "user_id": student.user_id,
-                "type": "reminder_24h",
-                "message": "Вы подтвердили регистрацию более 24 часов назад, но еще не записались на экзамен. Пожалуйста, завершите регистрацию."
-            })
+    # Отправляем уведомления только если есть активный пробник
+    if active_probnik:
+        for student in students:
+            # Проверяем, есть ли у студента записи для активного пробника
+            registrations_result = await db.execute(
+                select(ExamRegistration).where(
+                    ExamRegistration.student_id == student.id,
+                    ExamRegistration.probnik_id == active_probnik.id
+                )
+            )
+            registrations = registrations_result.scalars().all()
+            
+            # Если нет записей для активного пробника и прошло более 24 часов с подтверждения
+            if not registrations:
+                notifications_24h.append({
+                    "user_id": student.user_id,
+                    "type": "reminder_24h",
+                    "message": "Вы подтвердили регистрацию более 24 часов назад, но еще не записались на экзамен. Пожалуйста, завершите регистрацию."
+                })
     
-    # Уведомления за 3 дня до экзамена
-    three_days_later = now + timedelta(days=3)
-    three_days_date = three_days_later.date()
-    registrations_3d = await db.execute(
-        select(ExamRegistration)
-        .options(selectinload(ExamRegistration.student))
-        .where(
-            ExamRegistration.exam_date >= datetime.combine(three_days_date - timedelta(days=1), datetime.min.time()),
-            ExamRegistration.exam_date <= datetime.combine(three_days_date, datetime.min.time()),
-            ExamRegistration.confirmed == False
-        )
-    )
-    
+    # Уведомления за 3 дня до экзамена (только для активного пробника)
     notifications_3d = []
-    for reg in registrations_3d.scalars().all():
-        if reg.student and reg.student.user_id:
-            notifications_3d.append({
-                "user_id": reg.student.user_id,
-                "type": "reminder_3d",
-                "registration_id": reg.id,
-                "subject": reg.subject,
-                "exam_date": reg.exam_date.strftime("%d.%m.%Y"),
-                "exam_time": reg.exam_time,
-                "message": f"Через 3 дня у вас экзамен по {reg.subject} ({reg.exam_date.strftime('%d.%m.%Y')} в {reg.exam_time}). Подтвердите участие."
-            })
-    
-    # Уведомления за 1 день до экзамена
-    one_day_later = now + timedelta(days=1)
-    one_day_date = one_day_later.date()
-    registrations_1d = await db.execute(
-        select(ExamRegistration)
-        .options(selectinload(ExamRegistration.student))
-        .where(
-            ExamRegistration.exam_date >= datetime.combine(one_day_date, datetime.min.time()),
-            ExamRegistration.exam_date <= datetime.combine(one_day_date + timedelta(days=1), datetime.min.time()),
-            ExamRegistration.confirmed == False
+    if active_probnik:
+        three_days_later = now + timedelta(days=3)
+        three_days_date = three_days_later.date()
+        registrations_3d = await db.execute(
+            select(ExamRegistration)
+            .options(selectinload(ExamRegistration.student))
+            .where(
+                ExamRegistration.exam_date >= datetime.combine(three_days_date - timedelta(days=1), datetime.min.time()),
+                ExamRegistration.exam_date <= datetime.combine(three_days_date, datetime.min.time()),
+                ExamRegistration.confirmed == False,
+                ExamRegistration.probnik_id == active_probnik.id
+            )
         )
-    )
     
+        for reg in registrations_3d.scalars().all():
+            if reg.student and reg.student.user_id:
+                notifications_3d.append({
+                    "user_id": reg.student.user_id,
+                    "type": "reminder_3d",
+                    "registration_id": reg.id,
+                    "subject": reg.subject,
+                    "exam_date": reg.exam_date.strftime("%d.%m.%Y"),
+                    "exam_time": reg.exam_time,
+                    "message": f"Через 3 дня у вас экзамен по {reg.subject} ({reg.exam_date.strftime('%d.%m.%Y')} в {reg.exam_time}). Подтвердите участие."
+                })
+    
+    # Уведомления за 1 день до экзамена (только для активного пробника)
     notifications_1d = []
-    for reg in registrations_1d.scalars().all():
-        if reg.student and reg.student.user_id:
-            notifications_1d.append({
-                "user_id": reg.student.user_id,
-                "type": "reminder_1d",
-                "registration_id": reg.id,
-                "subject": reg.subject,
-                "exam_date": reg.exam_date.strftime("%d.%m.%Y"),
-                "exam_time": reg.exam_time,
-                "message": f"Завтра у вас экзамен по {reg.subject} в {reg.exam_time}. Подтвердите участие."
-            })
+    if active_probnik:
+        one_day_later = now + timedelta(days=1)
+        one_day_date = one_day_later.date()
+        registrations_1d = await db.execute(
+            select(ExamRegistration)
+            .options(selectinload(ExamRegistration.student))
+            .where(
+                ExamRegistration.exam_date >= datetime.combine(one_day_date, datetime.min.time()),
+                ExamRegistration.exam_date <= datetime.combine(one_day_date + timedelta(days=1), datetime.min.time()),
+                ExamRegistration.confirmed == False,
+                ExamRegistration.probnik_id == active_probnik.id
+            )
+        )
+        
+        for reg in registrations_1d.scalars().all():
+            if reg.student and reg.student.user_id:
+                notifications_1d.append({
+                    "user_id": reg.student.user_id,
+                    "type": "reminder_1d",
+                    "registration_id": reg.id,
+                    "subject": reg.subject,
+                    "exam_date": reg.exam_date.strftime("%d.%m.%Y"),
+                    "exam_time": reg.exam_time,
+                    "message": f"Завтра у вас экзамен по {reg.subject} в {reg.exam_time}. Подтвердите участие."
+                })
     
     return {
         "reminder_24h": notifications_24h,

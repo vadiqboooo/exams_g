@@ -24,3 +24,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_column('probnik', 'max_registrations')
 
+
