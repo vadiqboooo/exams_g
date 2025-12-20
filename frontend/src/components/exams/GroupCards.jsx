@@ -5,7 +5,8 @@ import { useApi } from '../../hooks/useApi';
 import GroupExamsListModal from './GroupExamsListModal';
 import GroupExamsModal from './GroupExamsModal';
 import ExamForm from './ExamForm';
-import { getSubjectDisplayName, formatSchedule, getDeclension } from '../../utils/helpers';
+import { formatSchedule, getDeclension } from '../../utils/helpers';
+import { getSubjectDisplayName } from '../../services/constants';
 
 const GroupCards = ({ showNotification }) => {
   const { groups, loadGroups } = useGroups();

@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import Modal from '../common/Modal';
-import { getSubjectDisplayName, getDeclension, formatTaskNumber } from '../../utils/helpers';
+import { getDeclension, formatTaskNumber } from '../../utils/helpers';
 import { useApi } from '../../hooks/useApi';
-import { SUBJECT_TASKS } from '../../services/constants';
+import { SUBJECT_TASKS, getSubjectDisplayName } from '../../services/constants';
 import './GroupExamsModal.css';
 import './GroupExamsListModal.css'; // Добавьте эту строку
 

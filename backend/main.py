@@ -13,7 +13,7 @@ from database import get_db, create_tables
 import crud
 import schemas
 from schemas import GroupStudentsUpdate, GroupUpdate
-from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration, Probnik
+from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration, Probnik, ExamType
 
 from auth_routes import router as auth_router
 from auth import get_current_user
@@ -502,6 +502,27 @@ async def delete_group(group_id: int, db: AsyncSession = Depends(get_db)):
     if not group:
         raise HTTPException(status_code=404, detail="Группа не найдена")
     
+    # Сначала получаем все связанные exam_types
+    exam_types_result = await db.execute(
+        select(ExamType).where(ExamType.group_id == group_id)
+    )
+    exam_types = exam_types_result.scalars().all()
+    exam_type_ids = [et.id for et in exam_types]
+    
+    # Удаляем все exams, связанные с этими exam_types
+    if exam_type_ids:
+        exams_result = await db.execute(
+            select(Exam).where(Exam.exam_type_id.in_(exam_type_ids))
+        )
+        exams = exams_result.scalars().all()
+        for exam in exams:
+            await db.delete(exam)
+    
+    # Затем удаляем exam_types
+    for exam_type in exam_types:
+        await db.delete(exam_type)
+    
+    # И наконец удаляем саму группу
     await db.delete(group)
     await db.commit()
     return {"message": "Группа удалена"}

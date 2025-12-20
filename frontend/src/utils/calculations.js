@@ -74,9 +74,71 @@ export function calculateTotalScore(subject, answers) {
   return primary; // для остальных — просто первичный балл
 }
 
+// Расчет первичного балла для infa_9 с учетом парных заданий (13.1/13.2 и 14.1/14.2)
+function calculateInfa9Score(answers, maxPerTask) {
+  if (!answers || answers.length === 0) return 0;
+  
+  let sum = 0;
+  
+  // Обрабатываем задания 1-12 (индексы 0-11)
+  for (let i = 0; i < 12 && i < answers.length; i++) {
+    const trimmed = answers[i] ? answers[i].trim() : '';
+    if (trimmed !== '-') {
+      const score = parseInt(trimmed) || 0;
+      const max = maxPerTask && maxPerTask[i] !== undefined ? maxPerTask[i] : score;
+      sum += Math.min(score, max);
+    }
+  }
+  
+  // Обрабатываем пару заданий 13.1 и 13.2 (индексы 12 и 13)
+  const task13_1 = answers[12] ? answers[12].trim() : '';
+  const task13_2 = answers[13] ? answers[13].trim() : '';
+  const score13_1 = task13_1 !== '-' ? (parseInt(task13_1) || 0) : 0;
+  const score13_2 = task13_2 !== '-' ? (parseInt(task13_2) || 0) : 0;
+  
+  // Логика: если есть оба - учитываем только 13.1, иначе учитываем тот, который есть
+  if (score13_1 > 0 && score13_2 > 0) {
+    const max = maxPerTask && maxPerTask[12] !== undefined ? maxPerTask[12] : score13_1;
+    sum += Math.min(score13_1, max);
+  } else if (score13_1 > 0) {
+    const max = maxPerTask && maxPerTask[12] !== undefined ? maxPerTask[12] : score13_1;
+    sum += Math.min(score13_1, max);
+  } else if (score13_2 > 0) {
+    const max = maxPerTask && maxPerTask[13] !== undefined ? maxPerTask[13] : score13_2;
+    sum += Math.min(score13_2, max);
+  }
+  
+  // Обрабатываем задание 14 как обычное (индекс 14)
+  if (answers.length > 14) {
+    const trimmed = answers[14] ? answers[14].trim() : '';
+    if (trimmed !== '-') {
+      const score = parseInt(trimmed) || 0;
+      const max = maxPerTask && maxPerTask[14] !== undefined ? maxPerTask[14] : score;
+      sum += Math.min(score, max);
+    }
+  }
+  
+  // Обрабатываем остальные задания (15, 16 -> индексы 15, 16)
+  for (let i = 15; i < answers.length; i++) {
+    const trimmed = answers[i] ? answers[i].trim() : '';
+    if (trimmed !== '-') {
+      const score = parseInt(trimmed) || 0;
+      const max = maxPerTask && maxPerTask[i] !== undefined ? maxPerTask[i] : score;
+      sum += Math.min(score, max);
+    }
+  }
+  
+  return sum;
+}
+
 // Расчет первичного балла с учетом максимальных баллов за задания
 export function calculatePrimaryScore(answers, subject = null, maxPerTask = null) {
   if (!answers || answers.length === 0) return 0;
+  
+  // Специальная обработка для infa_9 с парными заданиями
+  if (subject === 'infa_9') {
+    return calculateInfa9Score(answers, maxPerTask);
+  }
   
   return answers.reduce((sum, s, index) => {
     const trimmed = s ? s.trim() : '';

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getSubjectDisplayName } from '../../utils/helpers';
-import { calculateTotalScore } from '../../utils/calculations';
-import { SUBJECT_TASKS } from '../../services/constants';
+import { calculateTotalScore, calculatePrimaryScore } from '../../utils/calculations';
+import { SUBJECT_TASKS, getSubjectDisplayName } from '../../services/constants';
 import { useStudents } from '../../hooks/useStudents';
 
 const StudentResults = ({ student, exams, groups, showNotification, onStudentUpdate }) => {
@@ -42,28 +41,36 @@ const StudentResults = ({ student, exams, groups, showNotification, onStudentUpd
     group.students?.some(s => s.id === student.id)
   );
 
-  const calculatePrimaryScore = (answer, subject) => {
-    if (!answer) return 0;
-    const answers = answer.split(',').map(s => s.trim());
-    const subjectConfig = SUBJECT_TASKS[subject];
-    const maxPerTask = subjectConfig?.maxPerTask;
-    
-    return answers.reduce((sum, ans, index) => {
-      if (ans === '-') return sum;
-      const score = parseInt(ans) || 0;
-      // Если есть maxPerTask, ограничиваем балл максимумом
-      if (maxPerTask && maxPerTask[index] !== undefined) {
-        return sum + Math.min(score, maxPerTask[index]);
-      }
-      return sum + score;
-    }, 0);
-  };
+  // Используем calculatePrimaryScore из calculations.js
 
   // Функция для вычисления максимального балла по предмету
-  const calculateMaxScore = (subjectConfig) => {
+  const calculateMaxScore = (subjectConfig, subject) => {
     if (!subjectConfig?.maxPerTask || subjectConfig.maxPerTask.length === 0) {
       return subjectConfig?.tasks || 0;
     }
+    
+    // Для infa_9 учитываем, что из пары заданий 13.1/13.2 учитывается только один балл, задание 14 обычное
+    if (subject === 'infa_9') {
+      let sum = 0;
+      // Задания 1-12 (индексы 0-11)
+      for (let i = 0; i < 12 && i < subjectConfig.maxPerTask.length; i++) {
+        sum += subjectConfig.maxPerTask[i] || 0;
+      }
+      // Задание 13: берем максимум из 13.1 и 13.2 (индексы 12 и 13)
+      if (subjectConfig.maxPerTask.length > 13) {
+        sum += Math.max(subjectConfig.maxPerTask[12] || 0, subjectConfig.maxPerTask[13] || 0);
+      }
+      // Задание 14 обычное (индекс 14)
+      if (subjectConfig.maxPerTask.length > 14) {
+        sum += subjectConfig.maxPerTask[14] || 0;
+      }
+      // Задания 15-16 (индексы 15 и 16)
+      for (let i = 15; i < subjectConfig.maxPerTask.length; i++) {
+        sum += subjectConfig.maxPerTask[i] || 0;
+      }
+      return sum;
+    }
+    
     return subjectConfig.maxPerTask.reduce((sum, max) => sum + max, 0);
   };
 
@@ -405,10 +412,11 @@ const StudentResults = ({ student, exams, groups, showNotification, onStudentUpd
               </h4>
               
               {subjectExams.map(exam => {
-                const primaryScore = calculatePrimaryScore(exam.answer, subject);
-                const finalScore = calculateTotalScore(subject, exam.answer?.split(',') || []);
+                const answers = exam.answer ? exam.answer.split(',').map(s => s.trim()) : [];
                 const subjectConfig = SUBJECT_TASKS[subject];
-                const maxScore = calculateMaxScore(subjectConfig);
+                const primaryScore = calculatePrimaryScore(answers, subject, subjectConfig?.maxPerTask);
+                const finalScore = calculateTotalScore(subject, exam.answer?.split(',') || []);
+                const maxScore = calculateMaxScore(subjectConfig, subject);
                 
                 return (
                   <div key={exam.id} className="exam-result">

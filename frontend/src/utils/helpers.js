@@ -1,22 +1,3 @@
-export const getSubjectDisplayName = (subject) => {
-  const map = {
-    'math_profile': 'Математика (профиль)',
-    'math_base': 'Математика (база)',
-    'math_9': 'Математика',
-    'rus': 'Русский язык',
-    'rus_9': 'Русский язык',
-    'phys': 'Физика',
-    'infa': 'Информатика',
-    'chem': 'Химия',
-    'bio': 'Биология',
-    'hist': 'История',
-    'soc': 'Обществознание',
-    'geo': 'География',
-    'eng': 'Английский язык'
-  };
-  return map[subject] || subject;
-};
-
 export const formatSchedule = (schedule) => {
   if (!schedule || Object.keys(schedule).length === 0) return '';
   
@@ -59,6 +40,7 @@ export const getDeclension = (number, one, two, five) => {
 
 // Функция форматирования номера задания
 // Для rus_9 последние 5 заданий (14-18) отображаются как ГК1-ГК4 и ФК1
+// Для infa_9 задания 13 и 14 отображаются как 13.1/13.2 и 14.1/14.2
 export const formatTaskNumber = (taskIndex, subject, totalTasks) => {
   // taskIndex - это индекс (0-based), нужно преобразовать в номер (1-based)
   const taskNumber = taskIndex + 1;
@@ -76,6 +58,20 @@ export const formatTaskNumber = (taskIndex, subject, totalTasks) => {
       return 'ГК4';
     } else if (taskNumber === 18) {
       return 'ФК1';
+    }
+  }
+  
+  // Для infa_9 задание 13 отображается как 13.1/13.2, задание 14 обычное
+  if (subject === 'infa_9') {
+    if (taskNumber === 13) {
+      return '13.1';
+    } else if (taskNumber === 14) {
+      return '13.2';
+    } else if (taskNumber === 15) {
+      return '14';
+    } else if (taskNumber > 15) {
+      // Задания после 14 (15, 16) сдвигаются на 1
+      return (taskNumber - 1).toString();
     }
   }
   

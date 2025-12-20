@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useExams } from '../../hooks/useExams';
 import { SUBJECT_TASKS, getSubjectDisplayName } from '../../services/constants';
-import { calculateTotalScore } from '../../utils/calculations';
+import { calculateTotalScore, calculatePrimaryScore } from '../../utils/calculations';
 import { validateTaskInput, formatTaskNumber } from '../../utils/helpers';
 
 const StudentExamCard = ({ student, subject, groupId, showNotification }) => {
@@ -21,8 +21,31 @@ const StudentExamCard = ({ student, subject, groupId, showNotification }) => {
     if (!subjectConfig?.maxPerTask || subjectConfig.maxPerTask.length === 0) {
       return tasksCount; // Если нет maxPerTask, возвращаем количество заданий
     }
+    
+    // Для infa_9 учитываем, что из пары заданий 13.1/13.2 учитывается только один балл, задание 14 обычное
+    if (subject === 'infa_9') {
+      let sum = 0;
+      // Задания 1-12 (индексы 0-11)
+      for (let i = 0; i < 12 && i < subjectConfig.maxPerTask.length; i++) {
+        sum += subjectConfig.maxPerTask[i] || 0;
+      }
+      // Задание 13: берем максимум из 13.1 и 13.2 (индексы 12 и 13)
+      if (subjectConfig.maxPerTask.length > 13) {
+        sum += Math.max(subjectConfig.maxPerTask[12] || 0, subjectConfig.maxPerTask[13] || 0);
+      }
+      // Задание 14 обычное (индекс 14)
+      if (subjectConfig.maxPerTask.length > 14) {
+        sum += subjectConfig.maxPerTask[14] || 0;
+      }
+      // Задания 15-16 (индексы 15 и 16)
+      for (let i = 15; i < subjectConfig.maxPerTask.length; i++) {
+        sum += subjectConfig.maxPerTask[i] || 0;
+      }
+      return sum;
+    }
+    
     return subjectConfig.maxPerTask.reduce((sum, max) => sum + max, 0);
-  }, [subjectConfig, tasksCount]);
+  }, [subjectConfig, tasksCount, subject]);
 
   const handleAddExam = async () => {
     try {
@@ -85,23 +108,11 @@ const StudentExamCard = ({ student, subject, groupId, showNotification }) => {
     }
   };
 
-  const calculatePrimaryScore = () => {
+  const primaryScore = useMemo(() => {
     if (!studentExam?.answer) return 0;
     const answers = studentExam.answer.split(',').map(s => s.trim());
-    const maxPerTask = subjectConfig?.maxPerTask;
-    
-    return answers.reduce((sum, ans, index) => {
-      if (ans === '-') return sum;
-      const score = parseInt(ans) || 0;
-      // Если есть maxPerTask, ограничиваем балл максимумом
-      if (maxPerTask && maxPerTask[index] !== undefined) {
-        return sum + Math.min(score, maxPerTask[index]);
-      }
-      return sum + score;
-    }, 0);
-  };
-
-  const primaryScore = calculatePrimaryScore();
+    return calculatePrimaryScore(answers, subject, subjectConfig?.maxPerTask);
+  }, [studentExam?.answer, subject, subjectConfig?.maxPerTask]);
   const finalScore = calculateTotalScore(subject, studentExam?.answer?.split(',') || []);
 
   if (!studentExam) {

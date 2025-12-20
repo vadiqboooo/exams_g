@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import axios from 'axios';
 import Modal from '../common/Modal';
-import { getSubjectDisplayName, validateTaskInput, formatTaskNumber } from '../../utils/helpers';
-import { SUBJECT_TASKS } from '../../services/constants';
+import { validateTaskInput, formatTaskNumber } from '../../utils/helpers';
+import { SUBJECT_TASKS, getSubjectDisplayName } from '../../services/constants';
+import { calculatePrimaryScore } from '../../utils/calculations';
 import { useApi } from '../../hooks/useApi';
 import { useStudents } from '../../hooks/useStudents';
 import './GroupExamsModal.css';
@@ -123,8 +124,33 @@ const GroupExamsModal = ({
     if (!mainSubjectConfig?.maxPerTask || mainSubjectConfig.maxPerTask.length === 0) {
       return tasksCount; // Если нет maxPerTask, возвращаем количество заданий
     }
+    
+    const subject = group?.subject || mainSubject;
+    
+    // Для infa_9 учитываем, что из пары заданий 13.1/13.2 учитывается только один балл, задание 14 обычное
+    if (subject === 'infa_9') {
+      let sum = 0;
+      // Задания 1-12 (индексы 0-11)
+      for (let i = 0; i < 12 && i < mainSubjectConfig.maxPerTask.length; i++) {
+        sum += mainSubjectConfig.maxPerTask[i] || 0;
+      }
+      // Задание 13: берем максимум из 13.1 и 13.2 (индексы 12 и 13)
+      if (mainSubjectConfig.maxPerTask.length > 13) {
+        sum += Math.max(mainSubjectConfig.maxPerTask[12] || 0, mainSubjectConfig.maxPerTask[13] || 0);
+      }
+      // Задание 14 обычное (индекс 14)
+      if (mainSubjectConfig.maxPerTask.length > 14) {
+        sum += mainSubjectConfig.maxPerTask[14] || 0;
+      }
+      // Задания 15-16 (индексы 15 и 16)
+      for (let i = 15; i < mainSubjectConfig.maxPerTask.length; i++) {
+        sum += mainSubjectConfig.maxPerTask[i] || 0;
+      }
+      return sum;
+    }
+    
     return mainSubjectConfig.maxPerTask.reduce((sum, max) => sum + max, 0);
-  }, [mainSubjectConfig, tasksCount]);
+  }, [mainSubjectConfig, tasksCount, group?.subject, mainSubject]);
 
   // Получаем экзамен для конкретного студента
   const getExam = useCallback((studentId) => {
@@ -132,20 +158,12 @@ const GroupExamsModal = ({
   }, [filteredExams]);
 
   // Вычисляем первичный балл с учетом максимальных баллов за задания
-  const calculatePrimaryScore = (answerString) => {
+  const calculatePrimaryScoreLocal = useCallback((answerString) => {
     if (!answerString) return 0;
     const answers = answerString.split(',').map(a => a.trim());
-    const maxPerTask = mainSubjectConfig?.maxPerTask
-    return answers.reduce((sum, val, index) => {
-      if (val === '-') return sum;
-      const score = Number(val) || 0;
-      // Если есть maxPerTask, ограничиваем балл максимумом
-      if (maxPerTask && maxPerTask[index] !== undefined) {
-        return sum + Math.min(score, maxPerTask[index]);
-      }
-      return sum + score;
-    }, 0);
-  };
+    const subject = group?.subject || mainSubject;
+    return calculatePrimaryScore(answers, subject, mainSubjectConfig?.maxPerTask);
+  }, [group?.subject, mainSubject, mainSubjectConfig?.maxPerTask]);
 
   // Функция обновления экзамена в локальном состоянии
   const updateExamInState = (examId, updates) => {
@@ -332,7 +350,7 @@ const GroupExamsModal = ({
     let scoredExams = 0;
     
     filteredExams.forEach(exam => {
-      const score = calculatePrimaryScore(exam.answer);
+      const score = calculatePrimaryScoreLocal(exam.answer);
       if (score > 0) {
         totalScore += score;
         scoredExams++;
@@ -455,7 +473,7 @@ const GroupExamsModal = ({
               const hasExam = !!exam;
 
               const answers = exam?.answer?.split(',').map(s => s.trim()) || [];
-              const primaryScore = hasExam ? calculatePrimaryScore(exam.answer) : 0;
+              const primaryScore = hasExam ? calculatePrimaryScoreLocal(exam.answer) : 0;
 
               return (
                 <div key={student.id} className="student-exam-card">

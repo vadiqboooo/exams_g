@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Modal from '../common/Modal';
 import { useApi } from '../../hooks/useApi';
 import { useStudents } from '../../hooks/useStudents';
+import { SUBJECT_TASKS, getSubjectDisplayName } from '../../services/constants';
 
 const GroupForm = ({ group = null, students: studentsProp = [], onClose, showNotification }) => {
   const { makeRequest } = useApi();
@@ -29,14 +30,11 @@ const GroupForm = ({ group = null, students: studentsProp = [], onClose, showNot
   };
 
   // Преобразуем subject для отображения в форме
-  // Если subject = 'math_9', показываем 'math_profile' в селекте
-  // Если subject = 'rus_9', показываем 'rus' в селекте
+  // Если subject = 'math_9', показываем 'math_9' в селекте для ОГЭ
+  // Если subject = 'rus_9', показываем 'rus_9' в селекте для ОГЭ
   const getDisplaySubject = (subject, examType) => {
     if (!subject) return '';
-    if (examType === 'ОГЭ' || examType === 'oge') {
-      if (subject === 'math_9') return 'math_profile';
-      if (subject === 'rus_9') return 'rus';
-    }
+    // Возвращаем subject как есть, так как теперь используем SUBJECT_TASKS напрямую
     return subject;
   };
 
@@ -59,6 +57,27 @@ const GroupForm = ({ group = null, students: studentsProp = [], onClose, showNot
   });
   const [loading, setLoading] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
+  
+  // Получаем список предметов в зависимости от типа экзамена
+  const availableSubjects = useMemo(() => {
+    if (!formData.exam_type) return [];
+    
+    const isOGE = formData.exam_type === 'oge';
+    const subjects = [];
+    
+    Object.keys(SUBJECT_TASKS).forEach(key => {
+      const isOGESubject = key.endsWith('_9');
+      // Для ОГЭ показываем только предметы с _9, для ЕГЭ - только без _9
+      if ((isOGE && isOGESubject) || (!isOGE && !isOGESubject)) {
+        subjects.push({
+          value: key,
+          label: SUBJECT_TASKS[key].name
+        });
+      }
+    });
+    
+    return subjects.sort((a, b) => a.label.localeCompare(b.label));
+  }, [formData.exam_type]);
 
   // Загружаем список преподавателей
   useEffect(() => {
@@ -198,15 +217,7 @@ const GroupForm = ({ group = null, students: studentsProp = [], onClose, showNot
           }
         }
         
-        // Если выбран ОГЭ, автоматически заменяем предмет на math_9 или rus_9
-        if (finalExamType === 'ОГЭ' && finalSubject) {
-          if (finalSubject === 'rus' || finalSubject === 'Русский язык') {
-            finalSubject = 'rus_9';
-          } else if (finalSubject === 'math_profile' || finalSubject === 'math_base' || finalSubject === 'Математика') {
-            finalSubject = 'math_9';
-          }
-        }
-        
+        // Предмет уже в правильном формате из SUBJECT_TASKS, не нужно преобразовывать
         if (finalSubject) {
           updateData.subject = finalSubject;
         }
@@ -268,14 +279,7 @@ const GroupForm = ({ group = null, students: studentsProp = [], onClose, showNot
           }
         }
         
-        // Если выбран ОГЭ, автоматически заменяем предмет на math_9 или rus_9
-        if (finalExamType === 'ОГЭ' && finalSubject) {
-          if (finalSubject === 'rus' || finalSubject === 'Русский язык') {
-            finalSubject = 'rus_9';
-          } else if (finalSubject === 'math_profile' || finalSubject === 'math_base' || finalSubject === 'Математика') {
-            finalSubject = 'math_9';
-          }
-        }
+        // Предмет уже в правильном формате из SUBJECT_TASKS, не нужно преобразовывать
         
         // Добавляем exam_type только если он установлен
         if (finalExamType) {
@@ -400,50 +404,14 @@ const GroupForm = ({ group = null, students: studentsProp = [], onClose, showNot
 
         <div className="form-row">
           <div className="form-group">
-            <label>Школа</label>
-            <input
-              type="text"
-              value={formData.school}
-              onChange={(e) => setFormData({ ...formData, school: e.target.value })}
-              placeholder="Название школы"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Предмет</label>
-            <select
-              value={formData.subject}
-              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-            >
-              <option value="">Выберите предмет</option>
-              {formData.exam_type === 'oge' ? (
-                // Для ОГЭ показываем только специальные варианты
-                <>
-                  <option value="rus">Русский язык</option>
-                  <option value="math_profile">Математика</option>
-                </>
-              ) : (
-                // Для других типов экзаменов показываем все предметы
-                <>
-                  <option value="rus">Русский язык</option>
-                  <option value="math_profile">Математика (профиль)</option>
-                  <option value="math_base">Математика (база)</option>
-                  <option value="phys">Физика</option>
-                  <option value="infa">Информатика</option>
-                  <option value="bio">Биология</option>
-                  <option value="hist">История</option>
-                  <option value="soc">Обществознание</option>
-                  <option value="eng">Английский язык</option>
-                </>
-              )}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Тип экзамена</label>
+            <label>Тип экзамена *</label>
             <select
               value={formData.exam_type}
-              onChange={(e) => setFormData({ ...formData, exam_type: e.target.value })}
+              onChange={(e) => {
+                // При смене типа экзамена сбрасываем предмет
+                setFormData({ ...formData, exam_type: e.target.value, subject: '' });
+              }}
+              required
             >
               <option value="">Выберите тип</option>
               <option value="ege">ЕГЭ</option>
@@ -452,6 +420,32 @@ const GroupForm = ({ group = null, students: studentsProp = [], onClose, showNot
               <option value="test">Контрольная</option>
               <option value="other">Другое</option>
             </select>
+          </div>
+
+          <div className="form-group">
+            <label>Предмет</label>
+            <select
+              value={formData.subject}
+              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+              disabled={!formData.exam_type}
+            >
+              <option value="">{formData.exam_type ? 'Выберите предмет' : 'Сначала выберите тип экзамена'}</option>
+              {availableSubjects.map(subject => (
+                <option key={subject.value} value={subject.value}>
+                  {subject.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Школа</label>
+            <input
+              type="text"
+              value={formData.school}
+              onChange={(e) => setFormData({ ...formData, school: e.target.value })}
+              placeholder="Название школы"
+            />
           </div>
         </div>
 
