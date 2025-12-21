@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../../services/api';
+import { getSubjectDisplayName, SUBJECT_TASKS } from '../../services/constants';
 import './RegistrationsView.css';
 
 const RegistrationsView = ({ showNotification }) => {
   const [registrations, setRegistrations] = useState([]);
+  const [allRegistrations, setAllRegistrations] = useState([]); // Все загруженные записи (для фильтрации)
   const [allDates, setAllDates] = useState([]); // Список всех доступных дат
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedSchool, setSelectedSchool] = useState('');
+  const [selectedSubject, setSelectedSubject] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
   // Загружаем все записи один раз при монтировании для списка дат
@@ -15,10 +18,38 @@ const RegistrationsView = ({ showNotification }) => {
   }, []);
 
   // Загружаем записи при изменении даты или школы
+  // При этом сбрасываем фильтр по предмету
   useEffect(() => {
+    setSelectedSubject(''); // Сбрасываем фильтр по предмету
     loadRegistrations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, selectedSchool]);
+
+  // Фильтруем записи по предмету на клиенте
+  // selectedSubject может быть строкой вида "subject:ege" или "subject:oge"
+  useEffect(() => {
+    if (selectedSubject) {
+      const [subject, examType] = selectedSubject.split(':');
+      const filtered = allRegistrations.filter(reg => {
+        // Проверяем совпадение названия предмета
+        if (reg.subject !== subject) return false;
+        
+        // Проверяем тип экзамена по классу ученика
+        const studentClass = reg.student_class;
+        if (examType === 'ege') {
+          // Для ЕГЭ должны быть классы 10 или 11
+          return studentClass === 10 || studentClass === 11;
+        } else if (examType === 'oge') {
+          // Для ОГЭ должен быть класс 9
+          return studentClass === 9;
+        }
+        return false;
+      });
+      setRegistrations(filtered);
+    } else {
+      setRegistrations(allRegistrations);
+    }
+  }, [selectedSubject, allRegistrations]);
 
   const loadAllRegistrationsForDates = async () => {
     try {
@@ -55,7 +86,14 @@ const RegistrationsView = ({ showNotification }) => {
       const response = await api.get('/exam-registrations/', { params });
       console.log('Загружены записи:', response.data); // Для отладки
       const data = Array.isArray(response.data) ? response.data : [];
-      setRegistrations(data);
+      setAllRegistrations(data);
+      // Применяем фильтр по предмету, если он установлен
+      if (selectedSubject) {
+        const filtered = data.filter(reg => reg.subject === selectedSubject);
+        setRegistrations(filtered);
+      } else {
+        setRegistrations(data);
+      }
       if (data.length === 0 && !selectedDate && !selectedSchool) {
         console.log('Нет записей на экзамен');
       }
@@ -81,7 +119,19 @@ const RegistrationsView = ({ showNotification }) => {
   const clearFilter = () => {
     setSelectedDate('');
     setSelectedSchool('');
+    setSelectedSubject('');
     // loadRegistrations вызовется автоматически через useEffect
+  };
+
+  const handleSubjectClick = (subject, examType) => {
+    // Формируем ключ вида "subject:ege" или "subject:oge"
+    const subjectKey = `${subject}:${examType}`;
+    if (selectedSubject === subjectKey) {
+      // Если кликнули на уже выбранный предмет, снимаем фильтр
+      setSelectedSubject('');
+    } else {
+      setSelectedSubject(subjectKey);
+    }
   };
 
   const handleCheckboxChange = async (registrationId, field, value) => {
@@ -141,6 +191,95 @@ const RegistrationsView = ({ showNotification }) => {
   // Используем список всех доступных дат
   const availableDates = allDates;
 
+  // Подсчитываем количество уникальных учеников по каждому предмету из всех загруженных записей
+  // Разделяем на ОГЭ и ЕГЭ по классу ученика
+  const subjectCounts = useMemo(() => {
+    const egeCounts = {};
+    const ogeCounts = {};
+    const studentSubjects = new Set(); // Для отслеживания уникальных комбинаций студент-предмет
+    
+    // Используем allRegistrations для подсчета, чтобы статистика не менялась при фильтрации
+    const dataToCount = allRegistrations.length > 0 ? allRegistrations : registrations;
+    
+    dataToCount.forEach(reg => {
+      if (reg.subject && reg.student_fio) {
+        const key = `${reg.student_fio}_${reg.subject}`;
+        if (!studentSubjects.has(key)) {
+          studentSubjects.add(key);
+          
+          // Определяем, ОГЭ это или ЕГЭ по классу ученика
+          // 9 класс → ОГЭ, 10-11 классы → ЕГЭ
+          const studentClass = reg.student_class;
+          
+          if (studentClass === 9) {
+            ogeCounts[reg.subject] = (ogeCounts[reg.subject] || 0) + 1;
+          } else if (studentClass === 10 || studentClass === 11) {
+            egeCounts[reg.subject] = (egeCounts[reg.subject] || 0) + 1;
+          }
+          // Если класс не указан, не учитываем в статистике
+        }
+      }
+    });
+    
+    return { ege: egeCounts, oge: ogeCounts };
+  }, [allRegistrations, registrations]);
+
+  // Иконки для предметов
+  const getSubjectIcon = (subject) => {
+    if (!subject) return '📚';
+    
+    // Маппинг иконок по ключам из SUBJECT_TASKS
+    const iconsByKey = {
+      'rus': '📝',
+      'rus_9': '📝',
+      'math_profile': '🔢',
+      'math_base': '🧮',
+      'math_9': '🔢',
+      'phys': '⚛️',
+      'phys_9': '⚛️',
+      'infa': '💻',
+      'infa_9': '💻',
+      'chem': '🧪',
+      'bio': '🔬',
+      'bio_9': '🔬',
+      'hist': '📜',
+      'hist_9': '📜',
+      'soc': '👥',
+      'soc_9': '👥',
+      'eng': '🇬🇧',
+      'eng_9': '🇬🇧',
+      'geo': '🌍',
+      'geo_9': '🌍'
+    };
+    
+    // Сначала проверяем, является ли subject ключом из SUBJECT_TASKS
+    if (SUBJECT_TASKS[subject] && iconsByKey[subject]) {
+      return iconsByKey[subject];
+    }
+    
+    // Если subject - это название, ищем соответствующий ключ в SUBJECT_TASKS
+    for (const [key, config] of Object.entries(SUBJECT_TASKS)) {
+      if (config.name === subject && iconsByKey[key]) {
+        return iconsByKey[key];
+      }
+    }
+    
+    // Если не нашли, пытаемся найти по частичному совпадению названия
+    const subjectLower = subject.toLowerCase();
+    if (subjectLower.includes('русск')) return '📝';
+    if (subjectLower.includes('математ')) return '🔢';
+    if (subjectLower.includes('физик')) return '⚛️';
+    if (subjectLower.includes('информатик')) return '💻';
+    if (subjectLower.includes('хими')) return '🧪';
+    if (subjectLower.includes('биолог')) return '🔬';
+    if (subjectLower.includes('истори')) return '📜';
+    if (subjectLower.includes('обществ')) return '👥';
+    if (subjectLower.includes('английск')) return '🇬🇧';
+    if (subjectLower.includes('географи')) return '🌍';
+    
+    return '📚'; // Иконка по умолчанию
+  };
+
   if (isLoading) {
     return (
       <div className="registrations-container">
@@ -185,7 +324,7 @@ const RegistrationsView = ({ showNotification }) => {
             <option value="Байкальская">Байкальская</option>
           </select>
         </div>
-        {(selectedDate || selectedSchool) && (
+        {(selectedDate || selectedSchool || selectedSubject) && (
           <button onClick={clearFilter} className="btn-clear-filter">
             Сбросить фильтры
           </button>
@@ -194,6 +333,65 @@ const RegistrationsView = ({ showNotification }) => {
           Всего записей: {registrations.length}
         </div>
       </div>
+
+      {/* Строка с количеством учеников по предметам */}
+      {registrations.length > 0 && (Object.keys(subjectCounts.ege).length > 0 || Object.keys(subjectCounts.oge).length > 0) && (
+        <div className="subject-stats">
+          {/* ЕГЭ предметы */}
+          {Object.keys(subjectCounts.ege).length > 0 && (
+            <>
+              <div className="subject-stats-section">
+                <div className="subject-stats-label">ЕГЭ:</div>
+                <div className="subject-stats-items">
+                  {Object.entries(subjectCounts.ege)
+                    .sort((a, b) => b[1] - a[1]) // Сортируем по количеству (по убыванию)
+                    .map(([subject, count]) => {
+                      const subjectKey = `${subject}:ege`;
+                      return (
+                        <div 
+                          key={subject} 
+                          className={`subject-stat-item ${selectedSubject === subjectKey ? 'active' : ''}`}
+                          title={`${getSubjectDisplayName(subject)} - ${count} ученик${count === 1 ? '' : count < 5 ? 'а' : 'ов'}. Кликните для фильтрации`}
+                          onClick={() => handleSubjectClick(subject, 'ege')}
+                        >
+                          <span className="subject-icon">{getSubjectIcon(subject)}</span>
+                          <span className="subject-count">{count}</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </>
+          )}
+          
+          {/* ОГЭ предметы */}
+          {Object.keys(subjectCounts.oge).length > 0 && (
+            <>
+              <div className="subject-stats-section">
+                <div className="subject-stats-label">ОГЭ:</div>
+                <div className="subject-stats-items">
+                  {Object.entries(subjectCounts.oge)
+                    .sort((a, b) => b[1] - a[1]) // Сортируем по количеству (по убыванию)
+                    .map(([subject, count]) => {
+                      const subjectKey = `${subject}:oge`;
+                      return (
+                        <div 
+                          key={subject} 
+                          className={`subject-stat-item ${selectedSubject === subjectKey ? 'active' : ''}`}
+                          title={`${getSubjectDisplayName(subject)} - ${count} ученик${count === 1 ? '' : count < 5 ? 'а' : 'ов'}. Кликните для фильтрации`}
+                          onClick={() => handleSubjectClick(subject, 'oge')}
+                        >
+                          <span className="subject-icon">{getSubjectIcon(subject)}</span>
+                          <span className="subject-count">{count}</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {registrations.length === 0 ? (
         <div className="no-registrations">

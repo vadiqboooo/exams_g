@@ -56,6 +56,9 @@ waiting_for_registration: set = set()
 # Флаг последнего состояния пробника
 last_probnik_active: bool = False
 
+# Отслеживание отправленных уведомлений reminder_24h (чтобы не отправлять повторно)
+sent_24h_notifications: Dict[int, datetime] = {}  # {user_id: timestamp}
+
 
 async def get_active_probnik() -> Optional[Dict]:
     """Получение активного пробника из API"""
@@ -1902,13 +1905,22 @@ async def send_notifications(bot: Bot):
     if not result:
         return
     
-    # Отправляем уведомления через 24 часа
+    # Отправляем уведомления через 24 часа (не чаще раза в 24 часа)
+    now = datetime.utcnow()
     for notification in result.get("reminder_24h", []):
+        user_id = notification["user_id"]
+        # Проверяем, отправляли ли мы это уведомление в последние 24 часа
+        last_sent = sent_24h_notifications.get(user_id)
+        if last_sent and (now - last_sent) < timedelta(hours=24):
+            continue  # Пропускаем, если уже отправляли недавно
+        
         try:
             await bot.send_message(
-                chat_id=notification["user_id"],
+                chat_id=user_id,
                 text=notification["message"]
             )
+            # Сохраняем время отправки
+            sent_24h_notifications[user_id] = now
         except Exception as e:
             logger.error(f"Error sending 24h reminder: {e}")
     
