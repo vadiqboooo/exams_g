@@ -31,3 +31,4 @@ def downgrade() -> None:
     op.drop_column('probnik', 'exam_dates_baikalskaya')
 
 
+

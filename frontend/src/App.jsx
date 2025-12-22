@@ -21,7 +21,7 @@ const allTabs = [
   { id: 'exams', label: 'Экзамены', adminOnly: false },
   { id: 'results', label: 'Результаты', adminOnly: true },
   { id: 'groups', label: 'Группы', adminOnly: false },
-  { id: 'registrations', label: 'Записи на экзамен', adminOnly: true },
+  { id: 'registrations', label: 'Записи на экзамен', adminOnly: false },
   { id: 'probnik', label: 'Пробник', adminOnly: true }
 ];
 
@@ -60,7 +60,7 @@ function App() {
 
   // Если учитель пытается открыть админские вкладки, перенаправляем на "Экзамены"
   useEffect(() => {
-    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'registrations' || activeTab === 'probnik')) {
+    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'probnik')) {
       setActiveTab('exams');
     }
   }, [isAdmin, activeTab]);
@@ -68,7 +68,7 @@ function App() {
   // ----- ЕСЛИ ВОШЁЛ → ПОКАЗАТЬ ОСНОВНОЙ ИНТЕРФЕЙС -----
   const renderTabContent = useMemo(() => {
     // Если учитель пытается открыть админские вкладки, показываем экзамены
-    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'registrations' || activeTab === 'probnik')) {
+    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'probnik')) {
       return <ExamsTab showNotification={stableShowNotification} />;
     }
     

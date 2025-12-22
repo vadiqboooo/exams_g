@@ -337,9 +337,9 @@ const RegistrationsView = ({ showNotification }) => {
       {/* Строка с количеством учеников по предметам */}
       {registrations.length > 0 && (Object.keys(subjectCounts.ege).length > 0 || Object.keys(subjectCounts.oge).length > 0) && (
         <div className="subject-stats">
-          {/* ЕГЭ предметы */}
-          {Object.keys(subjectCounts.ege).length > 0 && (
-            <>
+          <div className="subject-stats-scrollable">
+            {/* ЕГЭ предметы */}
+            {Object.keys(subjectCounts.ege).length > 0 && (
               <div className="subject-stats-section">
                 <div className="subject-stats-label">ЕГЭ:</div>
                 <div className="subject-stats-items">
@@ -361,12 +361,10 @@ const RegistrationsView = ({ showNotification }) => {
                     })}
                 </div>
               </div>
-            </>
-          )}
-          
-          {/* ОГЭ предметы */}
-          {Object.keys(subjectCounts.oge).length > 0 && (
-            <>
+            )}
+            
+            {/* ОГЭ предметы */}
+            {Object.keys(subjectCounts.oge).length > 0 && (
               <div className="subject-stats-section">
                 <div className="subject-stats-label">ОГЭ:</div>
                 <div className="subject-stats-items">
@@ -388,8 +386,8 @@ const RegistrationsView = ({ showNotification }) => {
                     })}
                 </div>
               </div>
-            </>
-          )}
+            )}
+          </div>
         </div>
       )}
 

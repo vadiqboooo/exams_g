@@ -3,6 +3,26 @@ import { calculateTotalScore, calculatePrimaryScore } from '../../utils/calculat
 import { SUBJECT_TASKS, getSubjectDisplayName } from '../../services/constants';
 import { useStudents } from '../../hooks/useStudents';
 
+// Функция для нормализации названия предмета: преобразует полное название в ключ или возвращает ключ
+const normalizeSubject = (subject) => {
+  if (!subject) return null;
+  
+  // Если это уже ключ из SUBJECT_TASKS, возвращаем его
+  if (SUBJECT_TASKS[subject]) {
+    return subject;
+  }
+  
+  // Ищем по полному названию
+  for (const [key, config] of Object.entries(SUBJECT_TASKS)) {
+    if (config.name === subject) {
+      return key;
+    }
+  }
+  
+  // Если не нашли, возвращаем исходное значение (может быть кастомный предмет)
+  return subject;
+};
+
 const StudentResults = ({ student, exams, groups, showNotification, onStudentUpdate }) => {
   const [expanded, setExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -27,19 +47,48 @@ const StudentResults = ({ student, exams, groups, showNotification, onStudentUpd
   }, [student]);
 
 
+  // Получаем группы студента (для учителей это уже только группы учителя)
+  const studentGroups = groups.filter(group => 
+    group.students?.some(s => s.id === student.id)
+  );
+
+  // Для учителей: получаем предметы из групп учителя, в которых состоит студент (нормализованные)
+  const allowedSubjects = new Set();
+  if (!isAdmin && studentGroups.length > 0) {
+    // Все группы уже принадлежат учителю (отфильтрованы в ResultsView)
+    studentGroups.forEach(group => {
+      if (group.subject) {
+        const normalizedSubject = normalizeSubject(group.subject);
+        if (normalizedSubject) {
+          allowedSubjects.add(normalizedSubject);
+          // Также добавляем полное название, если оно отличается
+          if (normalizedSubject !== group.subject) {
+            allowedSubjects.add(group.subject);
+          }
+        }
+      }
+    });
+  }
+
+  // Фильтруем экзамены для учителей: только по предметам групп
+  let filteredExams = exams;
+  if (!isAdmin && allowedSubjects.size > 0) {
+    filteredExams = exams.filter(exam => {
+      if (!exam.subject) return false;
+      // Проверяем как ключ, так и нормализованное значение
+      const normalizedExamSubject = normalizeSubject(exam.subject);
+      return allowedSubjects.has(exam.subject) || allowedSubjects.has(normalizedExamSubject);
+    });
+  }
+
   // Группировка экзаменов по предметам
-  const examsBySubject = exams.reduce((acc, exam) => {
+  const examsBySubject = filteredExams.reduce((acc, exam) => {
     if (!acc[exam.subject]) {
       acc[exam.subject] = [];
     }
     acc[exam.subject].push(exam);
     return acc;
   }, {});
-
-  // Получаем группы студента
-  const studentGroups = groups.filter(group => 
-    group.students?.some(s => s.id === student.id)
-  );
 
   // Используем calculatePrimaryScore из calculations.js
 
@@ -179,7 +228,7 @@ const StudentResults = ({ student, exams, groups, showNotification, onStudentUpd
         
         <div className="results-summary">
           <span className="exams-count">
-            📊 Экзаменов: <strong>{exams.length}</strong>
+            📊 Экзаменов: <strong>{filteredExams.length}</strong>
           </span>
           <span className="expand-icon">
             {expanded ? '▼' : '▶'}
@@ -467,7 +516,7 @@ const StudentResults = ({ student, exams, groups, showNotification, onStudentUpd
         </div>
       )}
 
-      {expanded && exams.length === 0 && Object.keys(examsBySubject).length === 0 && !(student.admin_comment || student.parent_contact_status) && (
+      {expanded && filteredExams.length === 0 && Object.keys(examsBySubject).length === 0 && !(student.admin_comment || student.parent_contact_status) && (
         <div className="student-results-details">
           <div className="no-exams-message">
             <p>У студента нет экзаменов</p>

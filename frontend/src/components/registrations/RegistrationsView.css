@@ -70,14 +70,17 @@
 
 /* Строка со статистикой по предметам */
 .subject-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
   margin-bottom: 20px;
   padding: 15px;
   background: #f8f9fa;
   border-radius: 8px;
   border: 1px solid #dee2e6;
+}
+
+.subject-stats-scrollable {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .subject-stats-section {
@@ -313,6 +316,52 @@
   .registrations-table th,
   .registrations-table td {
     padding: 8px;
+  }
+
+  /* Мобильная версия: ЕГЭ в одной строке, ОГЭ в другой, каждая с горизонтальной прокруткой */
+  .subject-stats-scrollable {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .subject-stats-section {
+    width: 100%;
+  }
+
+  .subject-stats-label {
+    white-space: nowrap;
+    margin-bottom: 8px;
+  }
+
+  .subject-stats-items {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    padding-bottom: 5px;
+    /* Стили для скроллбара */
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e0 #f8f9fa;
+  }
+
+  /* Для WebKit браузеров (Chrome, Safari) */
+  .subject-stats-items::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .subject-stats-items::-webkit-scrollbar-track {
+    background: #f8f9fa;
+    border-radius: 3px;
+  }
+
+  .subject-stats-items::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 3px;
+  }
+
+  .subject-stats-items::-webkit-scrollbar-thumb:hover {
+    background: #a0aec0;
   }
 }
 

@@ -2,8 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { useStudents } from '../../hooks/useStudents';
 import { useExams } from '../../hooks/useExams';
 import { useGroups } from '../../hooks/useGroups';
+import { SUBJECT_TASKS } from '../../services/constants';
 import StudentResults from './StudentResults';
 import Filters from './Filters';
+
+// Функция для нормализации названия предмета: преобразует полное название в ключ или возвращает ключ
+const normalizeSubject = (subject) => {
+  if (!subject) return null;
+  
+  // Если это уже ключ из SUBJECT_TASKS, возвращаем его
+  if (SUBJECT_TASKS[subject]) {
+    return subject;
+  }
+  
+  // Ищем по полному названию
+  for (const [key, config] of Object.entries(SUBJECT_TASKS)) {
+    if (config.name === subject) {
+      return key;
+    }
+  }
+  
+  // Если не нашли, возвращаем исходное значение (может быть кастомный предмет)
+  return subject;
+};
 
 const ResultsView = ({ showNotification }) => {
   const { students, loadStudents } = useStudents();
@@ -16,6 +37,10 @@ const ResultsView = ({ showNotification }) => {
     subject: ''
   });
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Определяем роль пользователя
+  const userRole = localStorage.getItem("role") || "teacher";
+  const isAdmin = userRole === "admin";
 
   useEffect(() => {
     const loadData = async () => {
@@ -45,6 +70,22 @@ const ResultsView = ({ showNotification }) => {
 
     let result = [...studentsArray];
 
+    // Для учителей: показываем только студентов из их групп
+    if (!isAdmin) {
+      // Получаем все ID студентов из групп учителя
+      const teacherGroupStudentIds = new Set();
+      groupsArray.forEach(group => {
+        if (group.students && Array.isArray(group.students)) {
+          group.students.forEach(student => {
+            teacherGroupStudentIds.add(student.id);
+          });
+        }
+      });
+      
+      // Фильтруем студентов только из групп учителя
+      result = result.filter(s => teacherGroupStudentIds.has(s.id));
+    }
+
     // Фильтр по поиску
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
@@ -71,7 +112,7 @@ const ResultsView = ({ showNotification }) => {
     }
 
     setFilteredStudents(result);
-  }, [students, exams, groups, filters]);
+  }, [students, exams, groups, filters, isAdmin]);
 
   const handleFilterChange = (name, value) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -121,9 +162,48 @@ const ResultsView = ({ showNotification }) => {
       ) : (
         <div className="results-list">
           {filteredStudents.map(student => {
-            const studentExams = Array.isArray(exams) 
+            // Получаем все экзамены студента
+            let studentExams = Array.isArray(exams) 
               ? exams.filter(e => e.id_student === student.id)
               : [];
+            
+            // Для учителей: фильтруем экзамены по предметам групп учителя, в которых состоит студент
+            if (!isAdmin) {
+              const groupsArray = Array.isArray(groups) ? groups : [];
+              // Находим группы учителя, в которых состоит студент (все группы уже принадлежат учителю)
+              const teacherGroupsWithStudent = groupsArray.filter(group => 
+                group.students?.some(s => s.id === student.id)
+              );
+              
+              // Получаем предметы из групп учителя (нормализованные)
+              const teacherGroupSubjects = new Set();
+              teacherGroupsWithStudent.forEach(group => {
+                if (group.subject) {
+                  const normalizedSubject = normalizeSubject(group.subject);
+                  if (normalizedSubject) {
+                    teacherGroupSubjects.add(normalizedSubject);
+                    // Также добавляем полное название, если оно отличается
+                    if (normalizedSubject !== group.subject) {
+                      teacherGroupSubjects.add(group.subject);
+                    }
+                  }
+                }
+              });
+              
+              // Фильтруем экзамены только по предметам групп учителя
+              if (teacherGroupSubjects.size > 0) {
+                studentExams = studentExams.filter(exam => {
+                  if (!exam.subject) return false;
+                  // Проверяем как ключ, так и нормализованное значение
+                  const normalizedExamSubject = normalizeSubject(exam.subject);
+                  return teacherGroupSubjects.has(exam.subject) || teacherGroupSubjects.has(normalizedExamSubject);
+                });
+              } else {
+                // Если у студента нет групп учителя с предметами, не показываем экзамены
+                studentExams = [];
+              }
+            }
+            
             return (
               <StudentResults
                 key={student.id}

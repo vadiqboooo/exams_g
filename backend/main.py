@@ -13,7 +13,7 @@ from database import get_db, create_tables
 import crud
 import schemas
 from schemas import GroupStudentsUpdate, GroupUpdate
-from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration, Probnik, ExamType
+from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration, Probnik, ExamType, group_student_association
 
 from auth_routes import router as auth_router
 from auth import get_current_user
@@ -537,7 +537,7 @@ async def get_teachers(db: AsyncSession = Depends(get_db)):
     teachers = result.scalars().all()
     return [schemas.EmployeeOut.model_validate(t) for t in teachers]
 
-# Exam registrations endpoints (admin only)
+# Exam registrations endpoints
 @app.get("/exam-registrations/", response_model=List[schemas.ExamRegistrationWithStudentResponse])
 async def get_exam_registrations(
     date: Optional[str] = Query(None, description="Фильтр по дате в формате YYYY-MM-DD"),
@@ -545,12 +545,47 @@ async def get_exam_registrations(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user)
 ):
-    """Получение всех записей на экзамен через телеграм бот (только для администратора)"""
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
-    
+    """Получение записей на экзамен через телеграм бот. Для учителей - только записи студентов из их групп."""
     # Строим запрос с загрузкой студента
     query = select(ExamRegistration).options(selectinload(ExamRegistration.student))
+    
+    # Если пользователь - учитель, фильтруем по студентам из его групп
+    user_role = user.get("role")
+    if user_role == "teacher":
+        username = user.get("username") or user.get("sub")
+        if not username:
+            return []  # Если username отсутствует, возвращаем пустой список
+        
+        # Получаем ID учителя
+        teacher_query = await db.execute(
+            select(Employee.id).where(Employee.username == username)
+        )
+        teacher_id = teacher_query.scalar_one_or_none()
+        
+        if not teacher_id:
+            return []  # Если учитель не найден, возвращаем пустой список
+        
+        # Получаем все группы этого учителя
+        groups_query = await db.execute(
+            select(StudyGroup.id).where(StudyGroup.teacher_id == teacher_id)
+        )
+        group_ids = [g[0] for g in groups_query.all()]
+        
+        if not group_ids:
+            return []  # Если у учителя нет групп, возвращаем пустой список
+        
+        # Получаем всех студентов из этих групп через связующую таблицу
+        students_query = await db.execute(
+            select(group_student_association.c.student_id)
+            .where(group_student_association.c.group_id.in_(group_ids))
+        )
+        student_ids = [s[0] for s in students_query.all()]
+        
+        if not student_ids:
+            return []  # Если в группах нет студентов, возвращаем пустой список
+        
+        # Фильтруем записи по студентам из групп учителя
+        query = query.where(ExamRegistration.student_id.in_(student_ids))
     
     # Фильтр по дате, если указан
     if date:
