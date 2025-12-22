@@ -529,13 +529,139 @@ async def delete_group(group_id: int, db: AsyncSession = Depends(get_db)):
 
 # Employee endpoints
 @app.get("/teachers/", response_model=List[schemas.EmployeeOut])
-async def get_teachers(db: AsyncSession = Depends(get_db)):
-    """Получение списка всех учителей"""
+async def get_teachers(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Получение списка всех учителей (только для администратора)"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+    
     result = await db.execute(
         select(Employee).where(Employee.role == "teacher")
     )
     teachers = result.scalars().all()
     return [schemas.EmployeeOut.model_validate(t) for t in teachers]
+
+@app.post("/teachers/", response_model=schemas.EmployeeOut)
+async def create_teacher(
+    teacher_data: schemas.EmployeeCreate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Создание нового учителя (только для администратора)"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+    
+    # Проверяем, существует ли пользователь с таким username
+    result = await db.execute(
+        select(Employee).where(Employee.username == teacher_data.username)
+    )
+    existing_user = result.scalar_one_or_none()
+    
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Пользователь с таким именем уже существует")
+    
+    from auth import hash_password
+    new_teacher = Employee(
+        username=teacher_data.username,
+        password_hash=hash_password(teacher_data.password),
+        role="teacher",
+        teacher_name=teacher_data.teacher_name
+    )
+    
+    db.add(new_teacher)
+    await db.commit()
+    await db.refresh(new_teacher)
+    
+    return schemas.EmployeeOut.model_validate(new_teacher)
+
+@app.put("/teachers/{teacher_id}", response_model=schemas.EmployeeOut)
+async def update_teacher(
+    teacher_id: int,
+    teacher_update: schemas.EmployeeUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Обновление учителя (только для администратора)"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+    
+    result = await db.execute(
+        select(Employee).where(Employee.id == teacher_id, Employee.role == "teacher")
+    )
+    teacher = result.scalar_one_or_none()
+    
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Учитель не найден")
+    
+    # Обновляем поля
+    update_data = teacher_update.dict(exclude_unset=True)
+    
+    # Если обновляется username, проверяем уникальность
+    if "username" in update_data and update_data["username"] != teacher.username:
+        existing_result = await db.execute(
+            select(Employee).where(Employee.username == update_data["username"])
+        )
+        existing_user = existing_result.scalar_one_or_none()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Пользователь с таким именем уже существует")
+        teacher.username = update_data["username"]
+    
+    # Если обновляется пароль, хешируем его
+    if "password" in update_data:
+        from auth import hash_password
+        teacher.password_hash = hash_password(update_data["password"])
+    
+    if "teacher_name" in update_data:
+        teacher.teacher_name = update_data["teacher_name"]
+    
+    await db.commit()
+    await db.refresh(teacher)
+    
+    return schemas.EmployeeOut.model_validate(teacher)
+
+@app.delete("/teachers/{teacher_id}")
+async def delete_teacher(
+    teacher_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Удаление учителя (только для администратора). Группы учителя не удаляются."""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+    
+    result = await db.execute(
+        select(Employee).where(Employee.id == teacher_id, Employee.role == "teacher")
+    )
+    teacher = result.scalar_one_or_none()
+    
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Учитель не найден")
+    
+    # Перед удалением учителя устанавливаем teacher_id в NULL для всех его групп
+    # Сначала нужно сделать teacher_id nullable в группах, но для безопасности
+    # проверим, есть ли группы у учителя
+    groups_result = await db.execute(
+        select(StudyGroup).where(StudyGroup.teacher_id == teacher_id)
+    )
+    groups = groups_result.scalars().all()
+    
+    if groups:
+        # Если есть группы, нельзя удалить учителя, так как teacher_id не nullable
+        # Вместо этого можно либо запретить удаление, либо установить teacher_id в NULL
+        # Но так как teacher_id не nullable, нужно либо изменить схему, либо запретить удаление
+        # Для безопасности запретим удаление учителя с группами
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Невозможно удалить учителя: у него есть {len(groups)} групп. Сначала удалите или переназначьте группы."
+        )
+    
+    # Удаляем учителя только если у него нет групп
+    await db.delete(teacher)
+    await db.commit()
+    
+    return {"message": "Учитель успешно удален"}
 
 # Exam registrations endpoints
 @app.get("/exam-registrations/", response_model=List[schemas.ExamRegistrationWithStudentResponse])

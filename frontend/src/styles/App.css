@@ -1473,3 +1473,197 @@ body {
 }
 
 /* Пользовательские стили */
+
+/* Стили для компонента учителей */
+.teachers-container {
+  padding: 0;
+}
+
+.teachers-list {
+  margin-top: 20px;
+}
+
+.teachers-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.teachers-table thead {
+  background: #f8f9fa;
+}
+
+.teachers-table th {
+  padding: 15px;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.teachers-table td {
+  padding: 15px;
+  border-bottom: 1px solid #dee2e6;
+  color: #555;
+}
+
+.teachers-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.teachers-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-edit {
+  padding: 6px 12px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.btn-edit:hover {
+  background: #0056b3;
+}
+
+.btn-delete {
+  padding: 6px 12px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.btn-delete:hover {
+  background: #c82333;
+}
+
+.no-teachers {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+  font-size: 16px;
+}
+
+/* Форма учителя */
+.teacher-form {
+  padding: 30px;
+  min-width: 500px;
+}
+
+.teacher-form h3 {
+  margin-top: 0;
+  margin-bottom: 25px;
+  color: #2c3e50;
+  font-size: 1.8rem;
+  font-weight: 600;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #eaeaea;
+}
+
+.teacher-form .form-group {
+  margin-bottom: 20px;
+}
+
+.teacher-form label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #495057;
+}
+
+.teacher-form .required {
+  color: #dc3545;
+}
+
+.teacher-form .hint {
+  color: #6c757d;
+  font-size: 12px;
+  font-weight: normal;
+  margin-left: 5px;
+}
+
+.teacher-form input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.teacher-form input:focus {
+  outline: none;
+  border-color: #007bff;
+}
+
+.teacher-form input.error {
+  border-color: #dc3545;
+}
+
+.teacher-form .error-message {
+  display: block;
+  color: #dc3545;
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.teacher-form .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 1px solid #eaeaea;
+}
+
+.btn-secondary {
+  padding: 10px 20px;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.btn-secondary:hover {
+  background: #5a6268;
+}
+
+.btn-primary {
+  padding: 10px 20px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.btn-primary:hover {
+  background: #0056b3;
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

@@ -336,6 +336,19 @@ class EmployeeOut(BaseModel):
     class Config:
         from_attributes = True  # Для работы с ORM объектами SQLAlchemy
 
+# Для обновления сотрудника
+class EmployeeUpdate(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    teacher_name: Optional[str] = None
+    
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v):
+        if v is not None and len(v) < 6:
+            raise ValueError('Пароль должен быть не менее 6 символов')
+        return v
+
 # Для аутентификации
 class Token(BaseModel):
     access_token: str
