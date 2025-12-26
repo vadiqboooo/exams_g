@@ -60,7 +60,28 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
         await updateStudent(student.id, submitData);
         showNotification('Студент обновлён', 'success');
       } else {
-        // При создании нового студента не передаем поля администратора
+        // При создании нового студента добавляем поля администратора только если пользователь - администратор
+        if (isAdmin) {
+          // Обрабатываем class_num: пустая строка -> null, иначе число (только 9, 10, 11)
+          const classNumValue = formData.class_num?.toString().trim();
+          if (classNumValue) {
+            const classNum = parseInt(classNumValue, 10);
+            if (!isNaN(classNum) && [9, 10, 11].includes(classNum)) {
+              submitData.class_num = classNum;
+            } else {
+              submitData.class_num = null;
+            }
+          } else {
+            submitData.class_num = null;
+          }
+          
+          // Обрабатываем user_id: пустая строка -> null, иначе число
+          const userIdValue = formData.user_id?.toString().trim();
+          submitData.user_id = userIdValue ? parseInt(userIdValue, 10) : null;
+          if (isNaN(submitData.user_id)) {
+            submitData.user_id = null;
+          }
+        }
         await createStudent(submitData);
         showNotification('Студент добавлен', 'success');
       }
@@ -100,8 +121,8 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
         />
       </div>
 
-      {/* Поля только для администраторов и только при редактировании */}
-      {isAdmin && student && (
+      {/* Поля только для администраторов (при создании и редактировании) */}
+      {isAdmin && (
         <>
           <div className="form-group">
             <label>Класс</label>
@@ -143,6 +164,49 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
             </small>
           </div>
 
+        </>
+      )}
+
+      {/* Поля только для администраторов и только при редактировании */}
+      {isAdmin && student && (
+        <>
+          <div className="form-group">
+            <label>Комментарий администратора</label>
+            <textarea
+              value={formData.admin_comment || ''}
+              onChange={(e) => setFormData({ ...formData, admin_comment: e.target.value })}
+              placeholder="Внутренние заметки о студенте"
+              rows={3}
+              style={{
+                width: '100%',
+                padding: '8px',
+                fontSize: '14px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                resize: 'vertical'
+              }}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Статус контакта с родителями</label>
+            <select
+              value={formData.parent_contact_status || ''}
+              onChange={(e) => setFormData({ ...formData, parent_contact_status: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '8px',
+                fontSize: '14px',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
+            >
+              <option value="">Не указан</option>
+              <option value="informed">Проинформирован</option>
+              <option value="callback">Требуется перезвонить</option>
+              <option value="no_answer">Нет ответа</option>
+            </select>
+          </div>
         </>
       )}
 

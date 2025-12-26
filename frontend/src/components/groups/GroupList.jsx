@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useGroups } from '../../hooks/useGroups';
 import { useStudents } from '../../hooks/useStudents';
 import GroupForm from './GroupForm';
@@ -11,6 +11,7 @@ const GroupList = ({ showNotification, isAdmin = true }) => {
   const [showForm, setShowForm] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [editingGroup, setEditingGroup] = useState(null);
+  const [selectedSchool, setSelectedSchool] = useState('');
 
   useEffect(() => {
     loadGroups();
@@ -27,6 +28,22 @@ const GroupList = ({ showNotification, isAdmin = true }) => {
       }
     }
   }, [groups, selectedGroup]);
+
+  // Фильтруем группы по школе
+  const filteredGroups = useMemo(() => {
+    if (!selectedSchool) {
+      return groups;
+    }
+    return groups.filter(group => group.school === selectedSchool);
+  }, [groups, selectedSchool]);
+
+  const handleSchoolChange = (e) => {
+    setSelectedSchool(e.target.value);
+  };
+
+  const clearFilter = () => {
+    setSelectedSchool('');
+  };
 
   const handleDelete = async (id, name) => {
     if (window.confirm(`Удалить группу "${name}"?`)) {
@@ -53,13 +70,41 @@ const GroupList = ({ showNotification, isAdmin = true }) => {
         )}
       </div>
 
-      {groups.length === 0 ? (
+      <div className="registrations-filters" style={{ marginBottom: '20px' }}>
+        <div className="filter-group">
+          <label htmlFor="school-filter">Фильтр по школе:</label>
+          <select
+            id="school-filter"
+            value={selectedSchool}
+            onChange={handleSchoolChange}
+            className="date-select"
+          >
+            <option value="">Все школы</option>
+            <option value="Лермонтова">Лермонтова</option>
+            <option value="Байкальская">Байкальская</option>
+          </select>
+        </div>
+        {selectedSchool && (
+          <button onClick={clearFilter} className="btn-clear-filter">
+            Сбросить фильтр
+          </button>
+        )}
+        <div className="registrations-count">
+          Всего групп: {filteredGroups.length}
+        </div>
+      </div>
+
+      {filteredGroups.length === 0 ? (
         <div className="empty-state">
-          <p>Нет групп. Создайте первую группу.</p>
+          <p>
+            {selectedSchool 
+              ? `Нет групп по выбранной школе "${selectedSchool}".` 
+              : 'Нет групп. Создайте первую группу.'}
+          </p>
         </div>
       ) : (
         <div className="groups-list">
-          {groups.map(group => (
+          {filteredGroups.map(group => (
             <div 
               key={group.id} 
               className="group-item"

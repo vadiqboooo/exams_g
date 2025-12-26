@@ -23,9 +23,7 @@ OGE_SUBJECTS = [
     "Химия",
     "Физика",
     "Информатика",
-    "География",
-    "Английский язык",
-    "Литература"
+    "География"
 ]
 
 EGE_SUBJECTS = [
@@ -38,9 +36,7 @@ EGE_SUBJECTS = [
     "Химия",
     "Физика",
     "Информатика",
-    "География",
-    "Английский язык",
-    "Литература"
+    "Английский язык"
 ]
 
 @router.get("/student-by-user-id/{user_id}", response_model=schemas.StudentSearchResponse)

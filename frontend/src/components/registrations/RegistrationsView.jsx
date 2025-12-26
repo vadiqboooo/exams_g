@@ -10,6 +10,7 @@ const RegistrationsView = ({ showNotification }) => {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedSchool, setSelectedSchool] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
+  const [selectedTime, setSelectedTime] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
   // Загружаем все записи один раз при монтировании для списка дат
@@ -25,12 +26,15 @@ const RegistrationsView = ({ showNotification }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, selectedSchool]);
 
-  // Фильтруем записи по предмету на клиенте
+  // Фильтруем записи по предмету и времени на клиенте
   // selectedSubject может быть строкой вида "subject:ege" или "subject:oge"
   useEffect(() => {
+    let filtered = allRegistrations;
+    
+    // Фильтр по предмету
     if (selectedSubject) {
       const [subject, examType] = selectedSubject.split(':');
-      const filtered = allRegistrations.filter(reg => {
+      filtered = filtered.filter(reg => {
         // Проверяем совпадение названия предмета
         if (reg.subject !== subject) return false;
         
@@ -45,11 +49,15 @@ const RegistrationsView = ({ showNotification }) => {
         }
         return false;
       });
-      setRegistrations(filtered);
-    } else {
-      setRegistrations(allRegistrations);
     }
-  }, [selectedSubject, allRegistrations]);
+    
+    // Фильтр по времени
+    if (selectedTime) {
+      filtered = filtered.filter(reg => reg.exam_time === selectedTime);
+    }
+    
+    setRegistrations(filtered);
+  }, [selectedSubject, selectedTime, allRegistrations]);
 
   const loadAllRegistrationsForDates = async () => {
     try {
@@ -87,13 +95,7 @@ const RegistrationsView = ({ showNotification }) => {
       console.log('Загружены записи:', response.data); // Для отладки
       const data = Array.isArray(response.data) ? response.data : [];
       setAllRegistrations(data);
-      // Применяем фильтр по предмету, если он установлен
-      if (selectedSubject) {
-        const filtered = data.filter(reg => reg.subject === selectedSubject);
-        setRegistrations(filtered);
-      } else {
-        setRegistrations(data);
-      }
+      // Фильтры по предмету и времени применятся автоматически через useEffect
       if (data.length === 0 && !selectedDate && !selectedSchool) {
         console.log('Нет записей на экзамен');
       }
@@ -116,10 +118,15 @@ const RegistrationsView = ({ showNotification }) => {
     setSelectedSchool(e.target.value);
   };
 
+  const handleTimeChange = (e) => {
+    setSelectedTime(e.target.value);
+  };
+
   const clearFilter = () => {
     setSelectedDate('');
     setSelectedSchool('');
     setSelectedSubject('');
+    setSelectedTime('');
     // loadRegistrations вызовется автоматически через useEffect
   };
 
@@ -190,6 +197,19 @@ const RegistrationsView = ({ showNotification }) => {
 
   // Используем список всех доступных дат
   const availableDates = allDates;
+
+  // Извлекаем уникальные времена из всех загруженных записей
+  const availableTimes = useMemo(() => {
+    const times = [...new Set(
+      allRegistrations
+        .map(reg => reg.exam_time)
+        .filter(time => time)
+    )].sort((a, b) => {
+      // Сортируем время по возрастанию (сравниваем как строки "HH:MM")
+      return a.localeCompare(b);
+    });
+    return times;
+  }, [allRegistrations]);
 
   // Подсчитываем количество уникальных учеников по каждому предмету из всех загруженных записей
   // Разделяем на ОГЭ и ЕГЭ по классу ученика
@@ -324,7 +344,23 @@ const RegistrationsView = ({ showNotification }) => {
             <option value="Байкальская">Байкальская</option>
           </select>
         </div>
-        {(selectedDate || selectedSchool || selectedSubject) && (
+        <div className="filter-group">
+          <label htmlFor="time-filter">Фильтр по времени:</label>
+          <select
+            id="time-filter"
+            value={selectedTime}
+            onChange={handleTimeChange}
+            className="date-select"
+          >
+            <option value="">Все времена</option>
+            {availableTimes.map(time => (
+              <option key={time} value={time}>
+                {time}
+              </option>
+            ))}
+          </select>
+        </div>
+        {(selectedDate || selectedSchool || selectedSubject || selectedTime) && (
           <button onClick={clearFilter} className="btn-clear-filter">
             Сбросить фильтры
           </button>
@@ -393,7 +429,7 @@ const RegistrationsView = ({ showNotification }) => {
 
       {registrations.length === 0 ? (
         <div className="no-registrations">
-          {selectedDate || selectedSchool ? (
+          {selectedDate || selectedSchool || selectedTime || selectedSubject ? (
             <p>Нет записей по выбранным фильтрам</p>
           ) : (
             <p>Нет записей на экзамен</p>
