@@ -138,7 +138,7 @@ class ExamWithStudentResponse(ExamResponse):
 
 class ExamTypeBase(BaseModel):
     name: str
-    group_id: int
+    group_id: Optional[int] = None
     completed_tasks: Optional[List[int]] = None  # Массив номеров пройденных заданий
 
 

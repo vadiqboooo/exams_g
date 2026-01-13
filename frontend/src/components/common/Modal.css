@@ -1,0 +1,94 @@
+/* Modal.css */
+
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  padding: 32px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  animation: modalSlideIn 0.2s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Размеры модального окна */
+.modal-content.max-w-md {
+  max-width: 448px;
+}
+
+.modal-content.max-w-2xl {
+  max-width: 672px;
+}
+
+.modal-content.max-w-4xl {
+  max-width: 896px;
+}
+
+.modal-content.max-w-6xl {
+  max-width: 1152px;
+}
+
+/* Стили для скроллбара */
+.modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.modal-content::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .modal-backdrop {
+    padding: 10px;
+  }
+  
+  .modal-content {
+    padding: 20px;
+    max-height: 95vh;
+    border-radius: 8px;
+  }
+  
+  .modal-content.max-w-md,
+  .modal-content.max-w-2xl,
+  .modal-content.max-w-4xl,
+  .modal-content.max-w-6xl {
+    max-width: 100%;
+  }
+}

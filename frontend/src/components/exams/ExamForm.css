@@ -1,0 +1,365 @@
+/* ExamForm.css */
+
+
+
+.exam-form {
+  padding: 0;
+  max-width: 100%;
+  margin: 0;
+}
+
+.exam-form h2 {
+  margin: 0 0 24px 0;
+  color: #1a1a1a;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: #374151;
+  font-size: 14px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  background: white;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: #9ca3af;
+}
+
+/* Стили для поиска студентов */
+.student-select-wrapper {
+  position: relative;
+}
+
+.student-search-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.student-search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.student-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  z-index: 1000;
+}
+
+.student-option {
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  font-size: 14px;
+  color: #374151;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.student-option:last-child {
+  border-bottom: none;
+}
+
+.student-option:hover {
+  background-color: #f9fafb;
+}
+
+.student-option.no-results {
+  color: #9ca3af;
+  cursor: default;
+}
+
+.student-option.no-results:hover {
+  background-color: white;
+}
+
+.selected-student-display {
+  padding: 8px 12px;
+  background-color: #f0f9ff;
+  border-radius: 6px;
+  margin-top: 8px;
+  border: 1px solid #bfdbfe;
+  font-size: 14px;
+  color: #1e40af;
+}
+
+.selected-student-display strong {
+  font-weight: 500;
+}
+
+.custom-subject-input {
+  margin-top: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+/* Стили для карточки студента */
+.student-exam-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.student-exam-header {
+  background: white;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.student-info .student-name {
+  color: #1a1a1a;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.student-exam-content {
+  padding: 20px;
+}
+
+.exam-tasks-section {
+  margin-bottom: 20px;
+}
+
+.tasks-header {
+  margin-bottom: 12px;
+}
+
+.tasks-label {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.tasks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.task-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.task-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.task-number {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.task-input {
+  width: 100%;
+  height: 36px;
+  text-align: center;
+  font-weight: 500;
+  font-size: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 0;
+  transition: border-color 0.15s;
+  background: white;
+  box-sizing: border-box;
+}
+
+.task-input:focus {
+  border-color: #3b82f6;
+  outline: none;
+}
+
+.exam-comment-section {
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  padding: 16px;
+}
+
+.comment-header {
+  margin-bottom: 8px;
+}
+
+.comment-label {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.comment-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  resize: vertical;
+  font-family: inherit;
+  transition: border-color 0.15s;
+  line-height: 1.5;
+  box-sizing: border-box;
+  background: white;
+}
+
+.comment-textarea:focus {
+  border-color: #3b82f6;
+  outline: none;
+}
+
+.primary-score {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: white;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  color: #1a1a1a;
+  border: 1px solid #e5e7eb;
+}
+
+.score-max {
+  color: #6b7280;
+  margin-left: 2px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .tasks-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+  
+  .task-input {
+    height: 32px;
+    font-size: 13px;
+  }
+  
+  .form-actions {
+    flex-direction: column-reverse;
+  }
+  
+  .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
