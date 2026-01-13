@@ -111,7 +111,7 @@ const GroupList = ({ showNotification, isAdmin = true }) => {
               onClick={() => setSelectedGroup(group)}
             >
               <div className="group-info">
-                <h3>{group.name}</h3>
+                <h3>{group.name}</h3><p> {group.id}</p>
                 <p className="group-teacher">👨‍🏫 {group.teacher_name || group.teacher || 'Не указан'}</p>
                 <p className="group-stats">
                   📚 {group.students?.length || 0} учеников
