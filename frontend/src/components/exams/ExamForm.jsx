@@ -30,7 +30,7 @@ const ExamForm = ({ exam = null, onClose, showNotification }) => {
   useEffect(() => {
     const fetchExamTypes = async () => {
       try {
-        const response = await fetch('/exam-types/?group_id=31');
+        const response = await fetch('/exam-types/?group_id=59');
         const data = await response.json();
         setExamTypes(data);
       } catch (err) {
