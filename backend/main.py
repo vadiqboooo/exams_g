@@ -13,7 +13,7 @@ from database import get_db, create_tables
 import crud
 import schemas
 from schemas import GroupStudentsUpdate, GroupUpdate
-from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration, Probnik, ExamType, group_student_association
+from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration, Probnik, ExamType, Subject, group_student_association
 
 from auth_routes import router as auth_router
 from auth import get_current_user
@@ -58,7 +58,8 @@ def normalize_student_data(student):
         'class_num': class_num,
         'admin_comment': student.admin_comment,
         'parent_contact_status': student.parent_contact_status,
-        'schools': schools if schools else None
+        'schools': schools if schools else None,
+        'access_token': student.access_token
     }
 
 # CORS middleware должен быть добавлен ПЕРВЫМ, до всех остальных middleware и роутеров
@@ -163,19 +164,29 @@ async def read_all_students_with_exams(db: AsyncSession = Depends(get_db)):
 # Exam endpoints
 @app.post("/exams/", response_model=schemas.ExamResponse)
 async def create_exam(
-    exam: schemas.ExamCreate, 
-    db: AsyncSession = Depends(get_db)
+    exam: schemas.ExamCreate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
 ):
     student = await crud.get_student(db=db, student_id=exam.id_student)
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
-    
+
+    # Получаем ID текущего пользователя (создателя)
+    username = user.get("username") or user.get("sub")
+    created_by_id = None
+    if username:
+        employee_query = await db.execute(
+            select(Employee.id).where(Employee.username == username)
+        )
+        created_by_id = employee_query.scalar_one_or_none()
+
     try:
-        created_exam = await crud.create_exam(db=db, exam=exam)
-        # Перезагружаем с exam_type для получения названия
+        created_exam = await crud.create_exam(db=db, exam=exam, created_by_id=created_by_id)
+        # Перезагружаем с exam_type и created_by для получения полной информации
         result = await db.execute(
             select(Exam)
-            .options(selectinload(Exam.exam_type))
+            .options(selectinload(Exam.exam_type), selectinload(Exam.created_by))
             .where(Exam.id == created_exam.id)
         )
         exam_with_type = result.scalar_one_or_none()
@@ -229,10 +240,10 @@ async def read_exams(
     if not student_ids:
         return []
 
-    # Получаем экзамены только этих студентов с загрузкой exam_type
+    # Получаем экзамены только этих студентов с загрузкой exam_type и created_by
     exams_query = await db.execute(
         select(Exam)
-        .options(selectinload(Exam.exam_type))
+        .options(selectinload(Exam.exam_type), selectinload(Exam.created_by))
         .where(Exam.id_student.in_(student_ids))
         .offset(skip)
         .limit(limit)
@@ -1132,17 +1143,180 @@ async def delete_probnik(
     """Удаление пробника"""
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Доступ запрещен")
-    
+
     result = await db.execute(select(Probnik).where(Probnik.id == probnik_id))
     probnik = result.scalar_one_or_none()
-    
+
     if not probnik:
         raise HTTPException(status_code=404, detail="Пробник не найден")
-    
+
     await db.delete(probnik)
     await db.commit()
-    
+
     return {"message": "Пробник удален"}
+
+
+# ==== ПУБЛИЧНЫЕ ЭНДПОИНТЫ (БЕЗ АВТОРИЗАЦИИ) ====
+
+@app.get("/public/results/{access_token}", response_model=schemas.PublicStudentResultsResponse)
+async def get_public_student_results(
+    access_token: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Публичный доступ к результатам студента по уникальному токену"""
+    student = await crud.get_student_by_token(db=db, access_token=access_token)
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Результаты не найдены. Проверьте правильность ссылки.")
+
+    # Преобразуем экзамены с названиями
+    exams = [schemas.ExamResponse.from_orm_with_name(exam) for exam in student.exams]
+
+    return schemas.PublicStudentResultsResponse(
+        fio=student.fio,
+        exams=exams
+    )
+
+
+# ==== SUBJECTS (ПРЕДМЕТЫ) ====
+
+@app.get("/subjects/", response_model=List[schemas.SubjectResponse])
+async def get_subjects(
+    only_active: bool = Query(False, description="Показывать только активные предметы"),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Получение списка всех предметов"""
+    subjects = await crud.get_subjects(db, only_active=only_active)
+    result = []
+    for s in subjects:
+        result.append(schemas.SubjectResponse(
+            id=s.id,
+            code=s.code,
+            name=s.name,
+            exam_type=s.exam_type,
+            tasks_count=s.tasks_count,
+            max_per_task=s.max_per_task,
+            primary_to_secondary_scale=s.primary_to_secondary_scale,
+            grade_scale=[schemas.GradeScaleItem(**g) for g in s.grade_scale] if s.grade_scale else None,
+            special_config=s.special_config,
+            topics=[schemas.TopicItem(**t) for t in s.topics] if s.topics else None,
+            is_active=s.is_active,
+            created_at=s.created_at.isoformat() if s.created_at else None,
+            updated_at=s.updated_at.isoformat() if s.updated_at else None
+        ))
+    return result
+
+
+@app.get("/subjects/{subject_id}", response_model=schemas.SubjectResponse)
+async def get_subject(
+    subject_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Получение предмета по ID"""
+    subject = await crud.get_subject(db, subject_id)
+    if not subject:
+        raise HTTPException(status_code=404, detail="Предмет не найден")
+
+    return schemas.SubjectResponse(
+        id=subject.id,
+        code=subject.code,
+        name=subject.name,
+        exam_type=subject.exam_type,
+        tasks_count=subject.tasks_count,
+        max_per_task=subject.max_per_task,
+        primary_to_secondary_scale=subject.primary_to_secondary_scale,
+        grade_scale=[schemas.GradeScaleItem(**g) for g in subject.grade_scale] if subject.grade_scale else None,
+        special_config=subject.special_config,
+        topics=[schemas.TopicItem(**t) for t in subject.topics] if subject.topics else None,
+        is_active=subject.is_active,
+        created_at=subject.created_at.isoformat() if subject.created_at else None,
+        updated_at=subject.updated_at.isoformat() if subject.updated_at else None
+    )
+
+
+@app.post("/subjects/", response_model=schemas.SubjectResponse)
+async def create_subject(
+    subject: schemas.SubjectCreate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Создание нового предмета (только для администратора)"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+
+    try:
+        db_subject = await crud.create_subject(db, subject)
+        return schemas.SubjectResponse(
+            id=db_subject.id,
+            code=db_subject.code,
+            name=db_subject.name,
+            exam_type=db_subject.exam_type,
+            tasks_count=db_subject.tasks_count,
+            max_per_task=db_subject.max_per_task,
+            primary_to_secondary_scale=db_subject.primary_to_secondary_scale,
+            grade_scale=[schemas.GradeScaleItem(**g) for g in db_subject.grade_scale] if db_subject.grade_scale else None,
+            special_config=db_subject.special_config,
+            topics=[schemas.TopicItem(**t) for t in db_subject.topics] if db_subject.topics else None,
+            is_active=db_subject.is_active,
+            created_at=db_subject.created_at.isoformat() if db_subject.created_at else None,
+            updated_at=db_subject.updated_at.isoformat() if db_subject.updated_at else None
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/subjects/{subject_id}", response_model=schemas.SubjectResponse)
+async def update_subject(
+    subject_id: int,
+    subject_update: schemas.SubjectUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Обновление предмета (только для администратора)"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+
+    try:
+        db_subject = await crud.update_subject(db, subject_id, subject_update)
+        if not db_subject:
+            raise HTTPException(status_code=404, detail="Предмет не найден")
+
+        return schemas.SubjectResponse(
+            id=db_subject.id,
+            code=db_subject.code,
+            name=db_subject.name,
+            exam_type=db_subject.exam_type,
+            tasks_count=db_subject.tasks_count,
+            max_per_task=db_subject.max_per_task,
+            primary_to_secondary_scale=db_subject.primary_to_secondary_scale,
+            grade_scale=[schemas.GradeScaleItem(**g) for g in db_subject.grade_scale] if db_subject.grade_scale else None,
+            special_config=db_subject.special_config,
+            topics=[schemas.TopicItem(**t) for t in db_subject.topics] if db_subject.topics else None,
+            is_active=db_subject.is_active,
+            created_at=db_subject.created_at.isoformat() if db_subject.created_at else None,
+            updated_at=db_subject.updated_at.isoformat() if db_subject.updated_at else None
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/subjects/{subject_id}")
+async def delete_subject(
+    subject_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Удаление предмета (только для администратора)"""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+
+    success = await crud.delete_subject(db, subject_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Предмет не найден")
+
+    return {"message": "Предмет успешно удален"}
 
 
 if __name__ == "__main__":

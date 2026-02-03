@@ -48,7 +48,10 @@ class Student(Base):
     user_id = Column(Integer, nullable=True, index=True)  # Telegram user ID
     class_num = Column(Integer, nullable=True)  # Класс ученика (9, 10, 11)
     confirmed_at = Column(DateTime, nullable=True)  # Время подтверждения регистрации в боте
-    
+
+    # Уникальный токен для доступа к результатам без авторизации
+    access_token = Column(String(64), nullable=True, unique=True, index=True)
+
     exams = relationship("Exam", back_populates="student")
     groups = relationship("StudyGroup", secondary=group_student_association, back_populates="students")
     exam_registrations = relationship("ExamRegistration", back_populates="student")
@@ -67,16 +70,18 @@ class ExamType(Base):
 
 class Exam(Base):
     __tablename__ = 'exam'
-    
+
     id = Column(Integer, primary_key=True, index=True)
     exam_type_id = Column(Integer, ForeignKey('exam_types.id'), nullable=False)  # Связь с типом экзамена (название берется оттуда)
     id_student = Column(Integer, ForeignKey('student.id'), nullable=False)
     subject = Column(String(100), nullable=False)
     answer = Column(Text)
     comment = Column(Text)
-    
+    created_by_id = Column(Integer, ForeignKey('employees.id'), nullable=True)  # Кто создал результат экзамена
+
     student = relationship("Student", back_populates="exams")
     exam_type = relationship("ExamType", back_populates="exams")
+    created_by = relationship("Employee")
 
 class Employee(Base):
     __tablename__ = "employees"
@@ -113,31 +118,63 @@ class ExamRegistration(Base):
 class Probnik(Base):
     """Настройки пробника (экзамена для записи через телеграм)"""
     __tablename__ = 'probnik'
-    
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(200), nullable=False)  # Название пробника
     is_active = Column(Boolean, default=False)  # Открыта ли запись
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # Места на школах в JSON формате: {"9:00": 45, "12:00": 45}
     slots_baikalskaya = Column(JSON, nullable=True)
     slots_lermontova = Column(JSON, nullable=True)
-    
+
     # Дни проведения в JSON: [{"label": "Понедельник 5.01.26", "date": "2026-01-05"}, ...]
     exam_dates = Column(JSON, nullable=True)
-    
+
     # Время проведения: ["9:00", "12:00"]
     exam_times = Column(JSON, nullable=True)
-    
+
     # Отдельные дни для каждого филиала
     exam_dates_baikalskaya = Column(JSON, nullable=True)
     exam_dates_lermontova = Column(JSON, nullable=True)
-    
+
     # Отдельное время для каждого филиала
     exam_times_baikalskaya = Column(JSON, nullable=True)
     exam_times_lermontova = Column(JSON, nullable=True)
-    
+
     # Максимальное количество записей на одного ученика
     max_registrations = Column(Integer, default=4, nullable=True)
-    
-    registrations = relationship("ExamRegistration", back_populates="probnik") 
+
+    registrations = relationship("ExamRegistration", back_populates="probnik")
+
+
+class Subject(Base):
+    """Предметы с настройками (количество заданий, баллы, темы)"""
+    __tablename__ = 'subjects'
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(50), unique=True, nullable=False, index=True)  # rus, math_profile, etc.
+    name = Column(String(200), nullable=False)  # Русский язык, Математика (профиль)
+    exam_type = Column(String(20), nullable=False)  # ЕГЭ или ОГЭ
+    tasks_count = Column(Integer, nullable=False)  # Количество заданий
+    max_per_task = Column(JSON, nullable=False)  # Массив максимальных баллов: [1,1,2,3,...]
+
+    # Таблица перевода первичных баллов в тестовые (только для ЕГЭ)
+    # Формат: [0, 3, 5, 8, ...] где индекс - первичный балл, значение - тестовый
+    primary_to_secondary_scale = Column(JSON, nullable=True)
+
+    # Таблица перевода первичных баллов в оценку (только для ОГЭ)
+    # Формат: [{"grade": 2, "min": 0, "max": 10}, {"grade": 3, "min": 11, "max": 15}, ...]
+    grade_scale = Column(JSON, nullable=True)
+
+    # Специальная конфигурация для предметов с парными заданиями (например, infa_9)
+    # Формат: {"type": "paired", "pairs": [[12, 13]], "special_task": 14}
+    special_config = Column(JSON, nullable=True)
+
+    # Темы, которые проходятся в предмете
+    # Формат: [{"task_number": 1, "topic": "Фонетика"}, {"task_number": 2, "topic": "Лексика"}, ...]
+    topics = Column(JSON, nullable=True)
+
+    is_active = Column(Boolean, default=True)  # Активен ли предмет
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow) 

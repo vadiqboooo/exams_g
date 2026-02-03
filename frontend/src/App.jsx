@@ -1,5 +1,6 @@
 // src/App.jsx
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { StudentsProvider } from './hooks/useStudents';
 import { ExamsProvider } from './hooks/useExams';
 import { GroupsProvider } from './hooks/useGroups';
@@ -11,8 +12,10 @@ import GroupsTab from './components/groups/GroupList';
 import RegistrationsTab from './components/registrations/RegistrationsView';
 import ProbnikTab from './components/probnik/ProbnikManager';
 import TeachersTab from './components/teachers/TeacherList';
+import SubjectsTab from './components/subjects/SubjectManager';
 import Notification from './components/common/Notification';
 import Login from "./pages/Login";
+import PublicResults from "./pages/PublicResults";
 
 import './styles/App.css';
 
@@ -24,11 +27,26 @@ const allTabs = [
   { id: 'results', label: 'Результаты', adminOnly: true },
   { id: 'groups', label: 'Группы', adminOnly: false },
   { id: 'registrations', label: 'Записи на экзамен', adminOnly: false },
-  { id: 'probnik', label: 'Пробник', adminOnly: true }
+  { id: 'probnik', label: 'Пробник', adminOnly: true },
+  { id: 'subjects', label: 'Предметы', adminOnly: true }
 ];
 
 function App() {
-  // ← Проверяем авторизацию
+  const location = useLocation();
+
+  // Проверяем, является ли текущий путь публичной страницей результатов
+  const isPublicResultsPage = location.pathname.startsWith('/results/');
+
+  // Если это публичная страница, показываем её без авторизации
+  if (isPublicResultsPage) {
+    return (
+      <Routes>
+        <Route path="/results/:token" element={<PublicResults />} />
+      </Routes>
+    );
+  }
+
+  // ← Проверяем авторизацию для основного приложения
   const token = localStorage.getItem("token");
   const teacherName = localStorage.getItem("teacher_name") || "Пользователь";
   const userRole = localStorage.getItem("role") || "teacher";
@@ -62,7 +80,7 @@ function App() {
 
   // Если учитель пытается открыть админские вкладки, перенаправляем на "Экзамены"
   useEffect(() => {
-    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'teachers' || activeTab === 'probnik')) {
+    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'teachers' || activeTab === 'probnik' || activeTab === 'subjects')) {
       setActiveTab('exams');
     }
   }, [isAdmin, activeTab]);
@@ -70,10 +88,10 @@ function App() {
   // ----- ЕСЛИ ВОШЁЛ → ПОКАЗАТЬ ОСНОВНОЙ ИНТЕРФЕЙС -----
   const renderTabContent = useMemo(() => {
     // Если учитель пытается открыть админские вкладки, показываем экзамены
-    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'teachers' || activeTab === 'probnik')) {
+    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'teachers' || activeTab === 'probnik' || activeTab === 'subjects')) {
       return <ExamsTab showNotification={stableShowNotification} />;
     }
-    
+
     switch (activeTab) {
       case 'students':
         return <StudentsTab showNotification={stableShowNotification} />;
@@ -87,9 +105,10 @@ function App() {
         return <GroupsTab showNotification={stableShowNotification} isAdmin={isAdmin} />;
       case 'registrations':
         return <RegistrationsTab showNotification={stableShowNotification} />;
-      
       case 'probnik':
         return <ProbnikTab showNotification={stableShowNotification} />;
+      case 'subjects':
+        return <SubjectsTab showNotification={stableShowNotification} />;
       default:
         return null;
     }

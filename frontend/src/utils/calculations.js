@@ -134,25 +134,55 @@ function calculateInfa9Score(answers, maxPerTask) {
 // Расчет первичного балла с учетом максимальных баллов за задания
 export function calculatePrimaryScore(answers, subject = null, maxPerTask = null) {
   if (!answers || answers.length === 0) return 0;
-  
+
   // Специальная обработка для infa_9 с парными заданиями
   if (subject === 'infa_9') {
     return calculateInfa9Score(answers, maxPerTask);
   }
-  
+
   return answers.reduce((sum, s, index) => {
     const trimmed = s ? s.trim() : '';
     if (trimmed === '-') return sum;
-    
+
     const score = parseInt(trimmed) || 0;
-    
+
     // Если есть maxPerTask, проверяем, что балл не превышает максимум
     if (maxPerTask && maxPerTask[index] !== undefined) {
       const max = maxPerTask[index];
       // Если балл превышает максимум, используем максимум (для безопасности)
       return sum + Math.min(score, max);
     }
-    
+
     return sum + score;
   }, 0);
+}
+
+// Расчет баллов для экзамена (для публичной страницы результатов)
+export function calculateScoreForExam(answer, subject) {
+  if (!answer || !answer.trim()) {
+    return { primary: '-', secondary: '' };
+  }
+
+  // Парсим ответы (разделены запятыми, пробелами или тире)
+  const answers = answer.split(/[,\s]+/).map(s => s.trim()).filter(s => s);
+
+  // Получаем первичный балл
+  const primaryScore = calculatePrimaryScore(answers, subject);
+
+  // Для предметов с тестовыми баллами рассчитываем их
+  const hasTestScore = ['rus', 'math_profile', 'infa', 'phys', 'hist', 'bio', 'soc', 'eng'].includes(subject);
+
+  if (hasTestScore) {
+    const testScore = calculateTotalScore(subject, answers);
+    return {
+      primary: primaryScore.toString(),
+      secondary: testScore.toString()
+    };
+  }
+
+  // Для ОГЭ и базовой математики - только первичный балл
+  return {
+    primary: primaryScore.toString(),
+    secondary: ''
+  };
 }

@@ -88,6 +88,7 @@ const StudentList = ({ showNotification }) => {
               student={student}
               onEdit={() => setSelectedStudent(student)}
               onDelete={() => handleDelete(student.id, student.fio)}
+              showNotification={showNotification}
             />
           ))}
         </div>

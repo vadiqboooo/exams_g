@@ -29,7 +29,8 @@ def normalize_student_for_response(student):
         'user_id': user_id,
         'class_num': class_num,
         'admin_comment': getattr(student, 'admin_comment', None),
-        'parent_contact_status': getattr(student, 'parent_contact_status', None)
+        'parent_contact_status': getattr(student, 'parent_contact_status', None),
+        'access_token': getattr(student, 'access_token', None)
     }
 
 class StudentBase(BaseModel):
@@ -48,14 +49,15 @@ class StudentUpdate(BaseModel):
     parent_contact_status: Optional[str] = None
     user_id: Optional[int] = None
     class_num: Optional[int] = None
-    
+    regenerate_access_token: Optional[bool] = None  # Флаг для регенерации токена
+
     @field_validator('parent_contact_status')
     @classmethod
     def validate_status(cls, v):
         if v is not None and v not in ['informed', 'callback', 'no_answer', '']:
             raise ValueError('Статус должен быть: informed, callback или no_answer')
         return v
-    
+
     @field_validator('class_num')
     @classmethod
     def validate_class(cls, v):
@@ -68,7 +70,8 @@ class StudentResponse(StudentBase):
     admin_comment: Optional[str] = None
     parent_contact_status: Optional[str] = None
     schools: Optional[List[str]] = None  # Список школ из записей на экзамен
-    
+    access_token: Optional[str] = None  # Уникальный токен для доступа к результатам
+
     class Config:
         from_attributes = True
 
@@ -88,6 +91,7 @@ class ExamBase(BaseModel):
         return v
 
 class ExamCreate(ExamBase):
+    # created_by_id будет заполняться автоматически на сервере
     pass
 
 class ExamUpdate(BaseModel):
@@ -112,13 +116,19 @@ class ExamResponse(BaseModel):
     answer: Optional[str] = None
     comment: Optional[str] = None
     name: Optional[str] = None  # Название экзамена из exam_type (будет заполняться через relationship)
-    
+    created_by_id: Optional[int] = None  # ID создателя
+    created_by_name: Optional[str] = None  # Имя создателя
+
     class Config:
         from_attributes = True
-    
+
     @classmethod
     def from_orm_with_name(cls, obj):
-        """Создает ExamResponse с названием из exam_type"""
+        """Создает ExamResponse с названием из exam_type и информацией о создателе"""
+        created_by_name = None
+        if hasattr(obj, 'created_by') and obj.created_by:
+            created_by_name = obj.created_by.teacher_name or obj.created_by.username
+
         data = {
             'id': obj.id,
             'exam_type_id': obj.exam_type_id,
@@ -126,7 +136,9 @@ class ExamResponse(BaseModel):
             'subject': obj.subject,
             'answer': obj.answer,
             'comment': obj.comment,
-            'name': obj.exam_type.name if obj.exam_type else None
+            'name': obj.exam_type.name if obj.exam_type else None,
+            'created_by_id': obj.created_by_id if hasattr(obj, 'created_by_id') else None,
+            'created_by_name': created_by_name
         }
         return cls(**data)
 
@@ -163,6 +175,14 @@ class ExamTypeResponse(ExamTypeBase):
 
 class StudentWithExamsResponse(StudentResponse):
     exams: List[ExamResponse] = []
+
+class PublicStudentResultsResponse(BaseModel):
+    """Публичные результаты студента без чувствительных данных"""
+    fio: str
+    exams: List[ExamResponse] = []
+
+    class Config:
+        from_attributes = True
 
 # === ОБНОВЛЁННЫЕ СХЕМЫ ДЛЯ ГРУПП ===
 
@@ -477,6 +497,76 @@ class ProbnikResponse(BaseModel):
     exam_times_baikalskaya: Optional[List[str]] = None
     exam_times_lermontova: Optional[List[str]] = None
     max_registrations: Optional[int] = 4
-    
+
+    class Config:
+        from_attributes = True
+
+
+# ==== СХЕМЫ ДЛЯ ПРЕДМЕТОВ ====
+
+class TopicItem(BaseModel):
+    """Тема для конкретного задания"""
+    task_number: int
+    topic: str
+
+class GradeScaleItem(BaseModel):
+    """Диапазон баллов для оценки (ОГЭ)"""
+    grade: int  # Оценка: 2, 3, 4, 5
+    min: int    # Минимальный первичный балл
+    max: int    # Максимальный первичный балл
+
+class SubjectBase(BaseModel):
+    code: str
+    name: str
+    exam_type: str  # ЕГЭ или ОГЭ
+    tasks_count: int
+    max_per_task: List[int]
+    primary_to_secondary_scale: Optional[List[int]] = None  # Для ЕГЭ
+    grade_scale: Optional[List[GradeScaleItem]] = None      # Для ОГЭ
+    special_config: Optional[Dict] = None
+    topics: Optional[List[TopicItem]] = None
+    is_active: Optional[bool] = True
+
+    @field_validator('exam_type')
+    @classmethod
+    def validate_exam_type(cls, v):
+        if v not in ['ЕГЭ', 'ОГЭ']:
+            raise ValueError('Тип экзамена должен быть: ЕГЭ или ОГЭ')
+        return v
+
+    @field_validator('max_per_task')
+    @classmethod
+    def validate_max_per_task(cls, v, info):
+        # Проверяем, что длина массива совпадает с tasks_count (если tasks_count уже установлен)
+        # Примечание: в Pydantic v2 используется info.data вместо values
+        return v
+
+class SubjectCreate(SubjectBase):
+    pass
+
+class SubjectUpdate(BaseModel):
+    code: Optional[str] = None
+    name: Optional[str] = None
+    exam_type: Optional[str] = None
+    tasks_count: Optional[int] = None
+    max_per_task: Optional[List[int]] = None
+    primary_to_secondary_scale: Optional[List[int]] = None  # Для ЕГЭ
+    grade_scale: Optional[List[GradeScaleItem]] = None      # Для ОГЭ
+    special_config: Optional[Dict] = None
+    topics: Optional[List[TopicItem]] = None
+    is_active: Optional[bool] = None
+
+    @field_validator('exam_type')
+    @classmethod
+    def validate_exam_type(cls, v):
+        if v is not None and v not in ['ЕГЭ', 'ОГЭ']:
+            raise ValueError('Тип экзамена должен быть: ЕГЭ или ОГЭ')
+        return v
+
+class SubjectResponse(SubjectBase):
+    id: int
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
     class Config:
         from_attributes = True

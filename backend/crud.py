@@ -1,10 +1,17 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from models import Student, Exam, StudyGroup, Employee, ExamType
-from schemas import StudentCreate, StudentUpdate, ExamCreate, ExamUpdate, GroupCreate, GroupUpdate
+from models import Student, Exam, StudyGroup, Employee, ExamType, Subject
+from schemas import StudentCreate, StudentUpdate, ExamCreate, ExamUpdate, GroupCreate, GroupUpdate, SubjectCreate, SubjectUpdate
 from typing import List, Optional
 import json
+import secrets
+
+# ==================== HELPER FUNCTIONS ====================
+
+def generate_access_token() -> str:
+    """Генерирует уникальный токен для доступа к результатам студента"""
+    return secrets.token_urlsafe(32)
 
 # ==================== STUDENT CRUD ====================
 
@@ -15,8 +22,12 @@ async def create_student(db: AsyncSession, student: StudentCreate):
     )
     if existing_student.scalar_one_or_none():
         raise ValueError(f"Студент с именем '{student.fio}' уже существует")
-    
-    db_student = Student(**student.dict())
+
+    # Создаем студента с уникальным токеном
+    student_data = student.dict()
+    student_data['access_token'] = generate_access_token()
+
+    db_student = Student(**student_data)
     db.add(db_student)
     await db.commit()
     await db.refresh(db_student)
@@ -40,7 +51,11 @@ async def get_student(db: AsyncSession, student_id: int):
 async def get_student_with_exams(db: AsyncSession, student_id: int):
     result = await db.execute(
         select(Student)
-        .options(selectinload(Student.exams), selectinload(Student.exam_registrations))
+        .options(
+            selectinload(Student.exams).selectinload(Exam.exam_type),
+            selectinload(Student.exams).selectinload(Exam.created_by),
+            selectinload(Student.exam_registrations)
+        )
         .where(Student.id == student_id)
     )
     return result.scalar_one_or_none()
@@ -48,23 +63,40 @@ async def get_student_with_exams(db: AsyncSession, student_id: int):
 async def get_all_students_with_exams(db: AsyncSession):
     result = await db.execute(
         select(Student)
-        .options(selectinload(Student.exams))
+        .options(
+            selectinload(Student.exams).selectinload(Exam.exam_type),
+            selectinload(Student.exams).selectinload(Exam.created_by)
+        )
         .order_by(Student.id)
     )
     return result.scalars().all()
+
+async def get_student_by_token(db: AsyncSession, access_token: str):
+    """Получение студента по токену доступа с загрузкой экзаменов"""
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.exams).selectinload(Exam.exam_type))
+        .where(Student.access_token == access_token)
+    )
+    return result.scalar_one_or_none()
 
 async def update_student(db: AsyncSession, student_id: int, student_update: StudentUpdate):
     """Обновление данных студента"""
     result = await db.execute(select(Student).where(Student.id == student_id))
     db_student = result.scalar_one_or_none()
-    
+
     if db_student is None:
         return None
-    
+
     update_data = student_update.dict(exclude_unset=True)
+
+    # Если нужно регенерировать токен
+    if update_data.pop('regenerate_access_token', False):
+        db_student.access_token = generate_access_token()
+
     for field, value in update_data.items():
         setattr(db_student, field, value)
-    
+
     await db.commit()
     await db.refresh(db_student)
     return db_student
@@ -103,7 +135,7 @@ async def delete_student(db: AsyncSession, student_id: int):
 
 # ==================== EXAM CRUD ====================
 
-async def create_exam(db: AsyncSession, exam: ExamCreate):
+async def create_exam(db: AsyncSession, exam: ExamCreate, created_by_id: int = None):
     # Проверяем, что тип экзамена существует
     result = await db.execute(
         select(ExamType).where(ExamType.id == exam.exam_type_id)
@@ -111,7 +143,7 @@ async def create_exam(db: AsyncSession, exam: ExamCreate):
     exam_type = result.scalar_one_or_none()
     if not exam_type:
         raise ValueError("Тип экзамена не найден")
-    
+
     # Проверяем, что студент существует
     student_result = await db.execute(select(Student).where(Student.id == exam.id_student))
     student = student_result.scalar_one_or_none()
@@ -122,7 +154,9 @@ async def create_exam(db: AsyncSession, exam: ExamCreate):
     # Объект уже в сессии, поэтому изменения сохранятся автоматически
     student.parent_contact_status = None
 
-    db_exam = Exam(**exam.dict())
+    exam_data = exam.dict()
+    exam_data['created_by_id'] = created_by_id
+    db_exam = Exam(**exam_data)
     db.add(db_exam)
     await db.commit()
     await db.refresh(db_exam)
@@ -133,7 +167,7 @@ async def create_exam(db: AsyncSession, exam: ExamCreate):
 async def get_exams(db: AsyncSession, skip: int = 0, limit: int = 100):
     result = await db.execute(
         select(Exam)
-        .options(selectinload(Exam.exam_type))
+        .options(selectinload(Exam.exam_type), selectinload(Exam.created_by))
         .offset(skip)
         .limit(limit)
     )
@@ -142,7 +176,7 @@ async def get_exams(db: AsyncSession, skip: int = 0, limit: int = 100):
 async def get_exam(db: AsyncSession, exam_id: int):
     result = await db.execute(
         select(Exam)
-        .options(selectinload(Exam.exam_type))
+        .options(selectinload(Exam.exam_type), selectinload(Exam.created_by))
         .where(Exam.id == exam_id)
     )
     return result.scalar_one_or_none()
@@ -150,7 +184,7 @@ async def get_exam(db: AsyncSession, exam_id: int):
 async def get_exams_with_students(db: AsyncSession, skip: int = 0, limit: int = 100):
     result = await db.execute(
         select(Exam)
-        .options(selectinload(Exam.exam_type), selectinload(Exam.student))
+        .options(selectinload(Exam.exam_type), selectinload(Exam.student), selectinload(Exam.created_by))
         .join(Student)
         .offset(skip)
         .limit(limit)
@@ -166,14 +200,14 @@ async def get_exams_by_student(db: AsyncSession, student_id: int):
 async def update_exam(db: AsyncSession, exam_id: int, exam_update: ExamUpdate):
     result = await db.execute(
         select(Exam)
-        .options(selectinload(Exam.exam_type))
+        .options(selectinload(Exam.exam_type), selectinload(Exam.created_by))
         .where(Exam.id == exam_id)
     )
     db_exam = result.scalar_one_or_none()
-    
+
     if db_exam is None:
         return None
-    
+
     update_data = exam_update.dict(exclude_unset=True)
 
     # Если поменяли exam_type_id — проверяем, что тип существует
@@ -187,7 +221,7 @@ async def update_exam(db: AsyncSession, exam_id: int, exam_update: ExamUpdate):
 
     for field, value in update_data.items():
         setattr(db_exam, field, value)
-    
+
     await db.commit()
     await db.refresh(db_exam)
     return db_exam
@@ -400,10 +434,116 @@ async def delete_group(db: AsyncSession, group_id: int):
     """Удаление группы"""
     result = await db.execute(select(StudyGroup).where(StudyGroup.id == group_id))
     db_group = result.scalar_one_or_none()
-    
+
     if db_group is None:
         return False
-    
+
     await db.delete(db_group)
+    await db.commit()
+    return True
+
+
+# ==================== SUBJECT CRUD ====================
+
+async def get_subjects(db: AsyncSession, only_active: bool = False):
+    """Получение всех предметов"""
+    query = select(Subject).order_by(Subject.exam_type, Subject.name)
+    if only_active:
+        query = query.where(Subject.is_active == True)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+async def get_subject(db: AsyncSession, subject_id: int):
+    """Получение предмета по ID"""
+    result = await db.execute(select(Subject).where(Subject.id == subject_id))
+    return result.scalar_one_or_none()
+
+
+async def get_subject_by_code(db: AsyncSession, code: str):
+    """Получение предмета по коду"""
+    result = await db.execute(select(Subject).where(Subject.code == code))
+    return result.scalar_one_or_none()
+
+
+async def create_subject(db: AsyncSession, subject: SubjectCreate):
+    """Создание нового предмета"""
+    # Проверяем, что предмет с таким кодом не существует
+    existing = await get_subject_by_code(db, subject.code)
+    if existing:
+        raise ValueError(f"Предмет с кодом '{subject.code}' уже существует")
+
+    # Конвертируем topics из list[TopicItem] в list[dict]
+    topics_data = None
+    if subject.topics:
+        topics_data = [{"task_number": t.task_number, "topic": t.topic} for t in subject.topics]
+
+    # Конвертируем grade_scale из list[GradeScaleItem] в list[dict]
+    grade_scale_data = None
+    if subject.grade_scale:
+        grade_scale_data = [{"grade": g.grade, "min": g.min, "max": g.max} for g in subject.grade_scale]
+
+    db_subject = Subject(
+        code=subject.code,
+        name=subject.name,
+        exam_type=subject.exam_type,
+        tasks_count=subject.tasks_count,
+        max_per_task=subject.max_per_task,
+        primary_to_secondary_scale=subject.primary_to_secondary_scale,
+        grade_scale=grade_scale_data,
+        special_config=subject.special_config,
+        topics=topics_data,
+        is_active=subject.is_active
+    )
+
+    db.add(db_subject)
+    await db.commit()
+    await db.refresh(db_subject)
+    return db_subject
+
+
+async def update_subject(db: AsyncSession, subject_id: int, subject_update: SubjectUpdate):
+    """Обновление предмета"""
+    result = await db.execute(select(Subject).where(Subject.id == subject_id))
+    db_subject = result.scalar_one_or_none()
+
+    if db_subject is None:
+        return None
+
+    update_data = subject_update.dict(exclude_unset=True)
+
+    # Если обновляется код, проверяем уникальность
+    if "code" in update_data and update_data["code"] != db_subject.code:
+        existing = await get_subject_by_code(db, update_data["code"])
+        if existing:
+            raise ValueError(f"Предмет с кодом '{update_data['code']}' уже существует")
+
+    # Конвертируем topics если есть
+    if "topics" in update_data and update_data["topics"] is not None:
+        topics_data = [{"task_number": t.task_number, "topic": t.topic} for t in subject_update.topics]
+        update_data["topics"] = topics_data
+
+    # Конвертируем grade_scale если есть
+    if "grade_scale" in update_data and update_data["grade_scale"] is not None:
+        grade_scale_data = [{"grade": g.grade, "min": g.min, "max": g.max} for g in subject_update.grade_scale]
+        update_data["grade_scale"] = grade_scale_data
+
+    for field, value in update_data.items():
+        setattr(db_subject, field, value)
+
+    await db.commit()
+    await db.refresh(db_subject)
+    return db_subject
+
+
+async def delete_subject(db: AsyncSession, subject_id: int):
+    """Удаление предмета"""
+    result = await db.execute(select(Subject).where(Subject.id == subject_id))
+    db_subject = result.scalar_one_or_none()
+
+    if db_subject is None:
+        return False
+
+    await db.delete(db_subject)
     await db.commit()
     return True

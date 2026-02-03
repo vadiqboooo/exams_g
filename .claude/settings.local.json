@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m alembic:*)",
+      "Bash(npm install:*)",
+      "Bash(python generate_tokens.py:*)",
+      "Bash(npm --version)",
+      "Bash(alembic upgrade:*)",
+      "Bash(alembic downgrade:*)",
+      "Bash(python -c:*)",
+      "Bash(python import_subjects.py:*)",
+      "Bash(python:*)"
+    ]
+  }
+}

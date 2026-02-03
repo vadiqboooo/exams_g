@@ -1,0 +1,384 @@
+.subject-form-modal {
+  max-width: 800px;
+}
+
+.subject-form {
+  padding: 24px;
+}
+
+.subject-form h2 {
+  margin: 0 0 24px 0;
+  font-size: 24px;
+  color: #1f2937;
+}
+
+.form-section {
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.form-section:last-of-type {
+  border-bottom: none;
+}
+
+.form-section h3 {
+  margin: 0 0 20px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="number"]:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-group input.error,
+.form-group textarea.error {
+  border-color: #ef4444;
+}
+
+.form-group input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+.required {
+  color: #ef4444;
+}
+
+.error-text {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #ef4444;
+}
+
+.help-text {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Предпросмотр баллов */
+.max-scores-preview {
+  margin: 16px 0;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.scores-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 8px;
+}
+
+.score-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.task-num {
+  color: #6b7280;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.task-score {
+  color: #3b82f6;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+/* Темы */
+.topics-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.topic-number-input {
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.topic-name-input {
+  flex: 1;
+}
+
+.btn-add-topic {
+  padding: 10px 16px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-add-topic:hover {
+  background: #059669;
+}
+
+.topics-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.topic-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.topic-item:last-child {
+  margin-bottom: 0;
+}
+
+.topic-number {
+  font-weight: 600;
+  color: #3b82f6;
+  white-space: nowrap;
+}
+
+.topic-name {
+  flex: 1;
+  color: #1f2937;
+}
+
+.btn-remove-topic {
+  padding: 4px 8px;
+  background: #fee2e2;
+  color: #991b1b;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-remove-topic:hover {
+  background: #fecaca;
+}
+
+/* Действия формы */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.btn-cancel {
+  padding: 10px 24px;
+  background: #f3f4f6;
+  color: #374151;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel:hover {
+  background: #e5e7eb;
+}
+
+.btn-submit {
+  padding: 10px 24px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Таблица оценок ОГЭ */
+.grade-scale-controls {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.btn-initialize-scale {
+  padding: 10px 16px;
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-initialize-scale:hover {
+  background: #7c3aed;
+}
+
+.btn-add-grade {
+  padding: 10px 16px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-add-grade:hover {
+  background: #059669;
+}
+
+.grade-scale-table {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.grade-scale-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.grade-scale-table thead {
+  background: #f9fafb;
+}
+
+.grade-scale-table th {
+  padding: 12px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #6b7280;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.grade-scale-table td {
+  padding: 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.grade-scale-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.grade-input,
+.score-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.grade-input {
+  max-width: 80px;
+  font-weight: 600;
+  color: #3b82f6;
+}
+
+.score-input {
+  max-width: 120px;
+}
+
+.btn-remove-grade {
+  padding: 6px 12px;
+  background: #fee2e2;
+  color: #991b1b;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-remove-grade:hover {
+  background: #fecaca;
+}
+
+.no-grade-scale {
+  padding: 24px;
+  background: #f9fafb;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  text-align: center;
+  color: #6b7280;
+  margin: 16px 0;
+}
+
+.no-grade-scale p {
+  margin: 0;
+  font-size: 14px;
+}

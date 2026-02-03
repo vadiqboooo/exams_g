@@ -5,7 +5,7 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
   const { createStudent, updateStudent, loadStudents } = useStudents();
   const userRole = localStorage.getItem("role") || "teacher";
   const isAdmin = userRole === "admin";
-  
+
   const [formData, setFormData] = useState({
     fio: student?.fio || '',
     phone: student?.phone || '',
@@ -15,6 +15,7 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
     user_id: student?.user_id || ''
   });
   const [loading, setLoading] = useState(false);
+  const [regenerateToken, setRegenerateToken] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,7 +37,7 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
         if (isAdmin) {
           submitData.admin_comment = formData.admin_comment?.trim() || null;
           submitData.parent_contact_status = formData.parent_contact_status?.trim() || null;
-          
+
           // Обрабатываем class_num: пустая строка -> null, иначе число (только 9, 10, 11)
           const classNumValue = formData.class_num?.toString().trim();
           if (classNumValue) {
@@ -49,16 +50,24 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
           } else {
             submitData.class_num = null;
           }
-          
+
           // Обрабатываем user_id: пустая строка -> null, иначе число
           const userIdValue = formData.user_id?.toString().trim();
           submitData.user_id = userIdValue ? parseInt(userIdValue, 10) : null;
           if (isNaN(submitData.user_id)) {
             submitData.user_id = null;
           }
+
+          // Добавляем флаг регенерации токена
+          if (regenerateToken) {
+            submitData.regenerate_access_token = true;
+          }
         }
         await updateStudent(student.id, submitData);
-        showNotification('Студент обновлён', 'success');
+        showNotification(
+          regenerateToken ? 'Студент обновлён, токен регенерирован' : 'Студент обновлён',
+          'success'
+        );
       } else {
         // При создании нового студента добавляем поля администратора только если пользователь - администратор
         if (isAdmin) {
@@ -206,6 +215,21 @@ const StudentForm = ({ student = null, onClose, showNotification }) => {
               <option value="callback">Требуется перезвонить</option>
               <option value="no_answer">Нет ответа</option>
             </select>
+          </div>
+
+          <div className="form-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={regenerateToken}
+                onChange={(e) => setRegenerateToken(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>Регенерировать токен доступа к результатам</span>
+            </label>
+            <small style={{ color: '#666', fontSize: '12px', display: 'block', marginTop: '4px' }}>
+              Создаст новую уникальную ссылку для просмотра результатов. Старая ссылка перестанет работать.
+            </small>
           </div>
         </>
       )}
