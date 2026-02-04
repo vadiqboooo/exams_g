@@ -9,7 +9,9 @@
       "Bash(alembic downgrade:*)",
       "Bash(python -c:*)",
       "Bash(python import_subjects.py:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(alembic current:*)",
+      "Bash(alembic history:*)"
     ]
   }
 }

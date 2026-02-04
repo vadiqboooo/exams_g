@@ -1,4 +1,5 @@
 import React from 'react';
+import DropdownMenu from '../common/DropdownMenu';
 import './SubjectList.css';
 
 const SubjectList = ({ subjects, onEdit, onDelete, onToggleActive }) => {
@@ -43,28 +44,47 @@ const SubjectList = ({ subjects, onEdit, onDelete, onToggleActive }) => {
                 )}
               </td>
               <td className="status-cell">
-                <button
-                  onClick={() => onToggleActive(subject)}
-                  className={`status-toggle ${subject.is_active ? 'active' : 'inactive'}`}
-                >
-                  {subject.is_active ? '✓ Активен' : '✗ Неактивен'}
-                </button>
+                <span className={`status-badge ${subject.is_active ? 'active' : 'inactive'}`}>
+                  {subject.is_active ? (
+                    <>
+                      <svg className="status-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="7" fill="#10b981" />
+                        <path d="M5 8l2 2 4-4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      Активен
+                    </>
+                  ) : (
+                    <>
+                      <svg className="status-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="7" fill="#ef4444" />
+                        <path d="M8 4v4l2 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      Неактивен
+                    </>
+                  )}
+                </span>
               </td>
               <td className="actions-cell">
-                <button
-                  onClick={() => onEdit(subject)}
-                  className="btn-edit"
-                  title="Редактировать"
-                >
-                  ✏️
-                </button>
-                <button
-                  onClick={() => onDelete(subject.id)}
-                  className="btn-delete"
-                  title="Удалить"
-                >
-                  🗑️
-                </button>
+                <DropdownMenu
+                  items={[
+                    {
+                      label: 'Редактировать',
+                      onClick: () => onEdit(subject)
+                    },
+                    {
+                      label: subject.is_active ? 'Деактивировать' : 'Активировать',
+                      onClick: () => onToggleActive(subject)
+                    },
+                    {
+                      separator: true
+                    },
+                    {
+                      label: 'Удалить',
+                      variant: 'destructive',
+                      onClick: () => onDelete(subject.id)
+                    }
+                  ]}
+                />
               </td>
             </tr>
           ))}
