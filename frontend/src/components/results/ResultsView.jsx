@@ -37,7 +37,7 @@ const ResultsView = ({ showNotification }) => {
     subject: ''
   });
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Определяем роль пользователя
   const userRole = localStorage.getItem("role") || "teacher";
   const isAdmin = userRole === "admin";
@@ -163,18 +163,18 @@ const ResultsView = ({ showNotification }) => {
         <div className="results-list">
           {filteredStudents.map(student => {
             // Получаем все экзамены студента
-            let studentExams = Array.isArray(exams) 
+            let studentExams = Array.isArray(exams)
               ? exams.filter(e => e.id_student === student.id)
               : [];
-            
+
             // Для учителей: фильтруем экзамены по предметам групп учителя, в которых состоит студент
             if (!isAdmin) {
               const groupsArray = Array.isArray(groups) ? groups : [];
               // Находим группы учителя, в которых состоит студент (все группы уже принадлежат учителю)
-              const teacherGroupsWithStudent = groupsArray.filter(group => 
+              const teacherGroupsWithStudent = groupsArray.filter(group =>
                 group.students?.some(s => s.id === student.id)
               );
-              
+
               // Получаем предметы из групп учителя (нормализованные)
               const teacherGroupSubjects = new Set();
               teacherGroupsWithStudent.forEach(group => {
@@ -189,7 +189,7 @@ const ResultsView = ({ showNotification }) => {
                   }
                 }
               });
-              
+
               // Фильтруем экзамены только по предметам групп учителя
               if (teacherGroupSubjects.size > 0) {
                 studentExams = studentExams.filter(exam => {
@@ -203,7 +203,7 @@ const ResultsView = ({ showNotification }) => {
                 studentExams = [];
               }
             }
-            
+
             return (
               <StudentResults
                 key={student.id}
