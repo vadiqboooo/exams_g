@@ -74,57 +74,70 @@ const SubjectManager = () => {
 
   return (
     <div className="subject-manager">
-      <div className="subject-manager-header">
-        <h1>Управление предметами</h1>
-        <button onClick={handleCreate} className="btn-primary">
-          ➕ Добавить предмет
-        </button>
-      </div>
+      {!showForm ? (
+        <>
+          {/* Режим списка */}
+          <div className="subject-manager-header">
+            <h1>Управление предметами</h1>
+            <button onClick={handleCreate} className="btn-primary">
+              ➕ Добавить предмет
+            </button>
+          </div>
 
-      {error && (
-        <div className="error-message">
-          Ошибка: {error}
-        </div>
-      )}
+          {error && (
+            <div className="error-message">
+              Ошибка: {error}
+            </div>
+          )}
 
-      <div className="subject-filters">
-        <button
-          className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
-          onClick={() => setFilter('all')}
-        >
-          Все ({subjects.length})
-        </button>
-        <button
-          className={`filter-btn ${filter === 'ЕГЭ' ? 'active' : ''}`}
-          onClick={() => setFilter('ЕГЭ')}
-        >
-          ЕГЭ ({subjects.filter(s => s.exam_type === 'ЕГЭ').length})
-        </button>
-        <button
-          className={`filter-btn ${filter === 'ОГЭ' ? 'active' : ''}`}
-          onClick={() => setFilter('ОГЭ')}
-        >
-          ОГЭ ({subjects.filter(s => s.exam_type === 'ОГЭ').length})
-        </button>
-      </div>
+          <div className="subject-filters">
+            <button
+              className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
+              onClick={() => setFilter('all')}
+            >
+              Все ({subjects.length})
+            </button>
+            <button
+              className={`filter-btn ${filter === 'ЕГЭ' ? 'active' : ''}`}
+              onClick={() => setFilter('ЕГЭ')}
+            >
+              ЕГЭ ({subjects.filter(s => s.exam_type === 'ЕГЭ').length})
+            </button>
+            <button
+              className={`filter-btn ${filter === 'ОГЭ' ? 'active' : ''}`}
+              onClick={() => setFilter('ОГЭ')}
+            >
+              ОГЭ ({subjects.filter(s => s.exam_type === 'ОГЭ').length})
+            </button>
+          </div>
 
-      {loading ? (
-        <div className="loading">Загрузка...</div>
+          {loading ? (
+            <div className="loading">Загрузка...</div>
+          ) : (
+            <SubjectList
+              subjects={filteredSubjects}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onToggleActive={handleToggleActive}
+            />
+          )}
+        </>
       ) : (
-        <SubjectList
-          subjects={filteredSubjects}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onToggleActive={handleToggleActive}
-        />
-      )}
+        <>
+          {/* Режим редактирования */}
+          <div className="subject-form-header">
+            <button onClick={handleFormClose} className="btn-back">
+              ← Назад к списку
+            </button>
+            <h1>{selectedSubject ? 'Редактировать предмет' : 'Добавить предмет'}</h1>
+          </div>
 
-      {showForm && (
-        <SubjectForm
-          subject={selectedSubject}
-          onClose={handleFormClose}
-          onSuccess={handleFormSuccess}
-        />
+          <SubjectForm
+            subject={selectedSubject}
+            onClose={handleFormClose}
+            onSuccess={handleFormSuccess}
+          />
+        </>
       )}
     </div>
   );

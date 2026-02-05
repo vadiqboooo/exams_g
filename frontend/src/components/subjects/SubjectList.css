@@ -110,6 +110,7 @@
 
 .status-badge.active {
   color: #065f46;
+  background: transparent;
 }
 
 .status-badge.inactive {

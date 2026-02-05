@@ -337,7 +337,8 @@ class EmployeeCreate(BaseModel):
     password: str
     role: Optional[str] = "teacher"
     teacher_name: str
-    
+    school: Optional[str] = None  # "Байкальская" или "Лермонтова" для school_admin
+
     @field_validator('password')
     @classmethod
     def validate_password(cls, v):
@@ -351,8 +352,9 @@ class EmployeeOut(BaseModel):
     username: str
     role: str
     teacher_name: str
+    school: Optional[str] = None
 
-    
+
     class Config:
         from_attributes = True  # Для работы с ORM объектами SQLAlchemy
 
@@ -361,7 +363,8 @@ class EmployeeUpdate(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = None
     teacher_name: Optional[str] = None
-    
+    school: Optional[str] = None
+
     @field_validator('password')
     @classmethod
     def validate_password(cls, v):
@@ -379,6 +382,7 @@ class LoginResponse(BaseModel):
     access_token: str
     role: str
     teacher_name: str
+    school: Optional[str] = None
 
 # ==== СХЕМЫ ДЛЯ ТЕЛЕГРАМ-БОТА ====
 
@@ -567,6 +571,88 @@ class SubjectResponse(SubjectBase):
     id: int
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ==== СХЕМЫ ДЛЯ РАБОЧИХ СЕССИЙ ====
+
+class WorkSessionCreate(BaseModel):
+    """Создание рабочей сессии (только start_time)"""
+    pass  # employee_id будет браться из токена
+
+class WorkSessionUpdate(BaseModel):
+    """Обновление рабочей сессии (завершение)"""
+    pass  # end_time и duration_minutes рассчитываются автоматически
+
+class WorkSessionResponse(BaseModel):
+    id: int
+    employee_id: int
+    employee_name: Optional[str] = None  # Имя сотрудника
+    start_time: str
+    end_time: Optional[str] = None
+    duration_minutes: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ==== СХЕМЫ ДЛЯ ЗАДАЧ ====
+
+class TaskCreate(BaseModel):
+    """Создание задачи"""
+    title: str
+    description: Optional[str] = None
+    deadline: Optional[str] = None  # Формат: "YYYY-MM-DDTHH:MM:SS"
+    assigned_to_id: int
+
+class TaskUpdate(BaseModel):
+    """Обновление задачи"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    deadline: Optional[str] = None
+    status: Optional[str] = None  # new, in_progress, completed
+    assigned_to_id: Optional[int] = None
+
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, v):
+        if v is not None and v not in ['new', 'in_progress', 'completed']:
+            raise ValueError('Статус должен быть: new, in_progress или completed')
+        return v
+
+class TaskResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    deadline: Optional[str] = None
+    status: str
+    created_by_id: int
+    created_by_name: Optional[str] = None  # Имя создателя
+    assigned_to_id: int
+    assigned_to_name: Optional[str] = None  # Имя исполнителя
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+# ==== СХЕМЫ ДЛЯ ОТЧЕТОВ ====
+
+class ReportCreate(BaseModel):
+    """Создание отчета"""
+    report_date: str  # Формат: "YYYY-MM-DD"
+    content: str
+
+class ReportResponse(BaseModel):
+    id: int
+    employee_id: int
+    employee_name: Optional[str] = None  # Имя сотрудника
+    report_date: str
+    content: str
+    created_at: str
 
     class Config:
         from_attributes = True

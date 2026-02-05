@@ -13,10 +13,10 @@ from database import get_db, create_tables
 import crud
 import schemas
 from schemas import GroupStudentsUpdate, GroupUpdate
-from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration, Probnik, ExamType, Subject, group_student_association
+from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration, Probnik, ExamType, Subject, group_student_association, WorkSession, Task, Report
 
 from auth_routes import router as auth_router
-from auth import get_current_user
+from auth import get_current_user, require_owner, require_owner_or_school_admin
 from telegram_routes import router as telegram_router
 
 
@@ -110,11 +110,40 @@ async def create_student(
 
 @app.get("/students/", response_model=List[schemas.StudentResponse])
 async def read_students(
-    skip: int = 0, 
-    limit: int = 100, 
-    db: AsyncSession = Depends(get_db)
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
 ):
     students = await crud.get_students(db=db, skip=skip, limit=limit)
+
+    # Фильтрация для school_admin - показываем только студентов из групп своей школы
+    if user.get("role") == "school_admin":
+        school = user.get("school")
+        if school:
+            # Получаем группы этой школы
+            result = await db.execute(
+                select(StudyGroup.id).where(StudyGroup.school == school)
+            )
+            school_group_ids = set([row[0] for row in result.all()])
+
+            # Фильтруем студентов - показываем только тех, кто есть хотя бы в одной группе этой школы
+            filtered_students = []
+            for student in students:
+                # Загружаем группы студента
+                student_result = await db.execute(
+                    select(Student)
+                    .options(selectinload(Student.groups))
+                    .where(Student.id == student.id)
+                )
+                student_with_groups = student_result.scalar_one_or_none()
+                if student_with_groups and student_with_groups.groups:
+                    student_group_ids = set([g.id for g in student_with_groups.groups])
+                    if student_group_ids & school_group_ids:  # Есть пересечение
+                        filtered_students.append(student)
+
+            students = filtered_students
+
     # Нормализуем данные перед валидацией - преобразуем пустые строки в None
     return [schemas.StudentResponse(**normalize_student_data(s)) for s in students]
 
@@ -202,8 +231,8 @@ async def read_exams(
     user: dict = Depends(get_current_user)
 ):
  
-    # ADMIN — получает всё
-    if user.get("role") == "admin":
+    # OWNER/ADMIN — получает всё
+    if user.get("role") in ["owner", "admin"]:
         exams = await crud.get_exams(db=db, skip=skip, limit=limit)
         return [schemas.ExamResponse.from_orm_with_name(exam) for exam in exams]
     
@@ -407,26 +436,34 @@ async def read_groups(
         if not username:
             # Если username отсутствует, возвращаем пустой список
             return []
-        
+
         teacher_query = await db.execute(
             select(Employee.id).where(Employee.username == username)
         )
         teacher_id = teacher_query.scalar_one_or_none()
-        
+
         if not teacher_id:
             # Если учитель не найден в БД, возвращаем пустой список
             return []
-        
+
         # Получаем ТОЛЬКО группы этого учителя
         query = select(StudyGroup).options(selectinload(StudyGroup.teacher))
         query = query.where(StudyGroup.teacher_id == teacher_id)
+    elif user.get("role") == "school_admin":
+        # school_admin видит только группы своей школы
+        school = user.get("school")
+        if not school:
+            return []
+
+        query = select(StudyGroup).options(selectinload(StudyGroup.teacher))
+        query = query.where(StudyGroup.school == school)
     else:
-        # ADMIN — получает все группы
+        # OWNER/ADMIN — получает все группы
         query = select(StudyGroup).options(selectinload(StudyGroup.teacher))
 
     result = await db.execute(query)
     groups = result.unique().scalars().all()
-    
+
     # Преобразуем в схемы с информацией об учителе
     return [schemas.GroupBase.from_orm_with_teacher(g) for g in groups]
 
@@ -441,16 +478,16 @@ async def read_groups_with_students(
         if not username:
             # Если username отсутствует, возвращаем пустой список
             return []
-        
+
         teacher_query = await db.execute(
             select(Employee.id).where(Employee.username == username)
         )
         teacher_id = teacher_query.scalar_one_or_none()
-        
+
         if not teacher_id:
             # Если учитель не найден в БД, возвращаем пустой список
             return []
-        
+
         # Получаем ТОЛЬКО группы этого учителя (строгая фильтрация)
         result = await db.execute(
             select(StudyGroup)
@@ -459,15 +496,27 @@ async def read_groups_with_students(
         )
         groups = result.unique().scalars().all()
         return [schemas.GroupResponse.from_orm_with_teacher(g) for g in groups]
-    
-    # ADMIN — получает все группы
-    # Для всех остальных ролей (включая неопределенные) возвращаем пустой список
-    # чтобы избежать случайного показа всех групп
-    if user.get("role") == "admin":
+
+    # school_admin — показываем группы только его школы
+    elif user.get("role") == "school_admin":
+        school = user.get("school")
+        if not school:
+            return []
+
+        result = await db.execute(
+            select(StudyGroup)
+            .options(selectinload(StudyGroup.students), selectinload(StudyGroup.teacher))
+            .where(StudyGroup.school == school)
+        )
+        groups = result.unique().scalars().all()
+        return [schemas.GroupResponse.from_orm_with_teacher(g) for g in groups]
+
+    # OWNER/ADMIN — получает все группы
+    elif user.get("role") in ["admin", "owner"]:
         groups = await crud.get_groups_with_students(db=db)
         return [schemas.GroupResponse.from_orm_with_teacher(g) for g in groups]
-    
-    # Если роль не определена или не admin/teacher - возвращаем пустой список
+
+    # Если роль не определена - возвращаем пустой список
     return []
 
 @app.get("/groups/{group_id}", response_model=schemas.GroupResponse)
@@ -542,27 +591,23 @@ async def delete_group(group_id: int, db: AsyncSession = Depends(get_db)):
 @app.get("/teachers/", response_model=List[schemas.EmployeeOut])
 async def get_teachers(
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(require_owner)
 ):
-    """Получение списка всех учителей (только для администратора)"""
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
-    
+    """Получение списка всех сотрудников (owner, school_admin, teacher)"""
+
     result = await db.execute(
-        select(Employee).where(Employee.role == "teacher")
+        select(Employee).order_by(Employee.id)
     )
-    teachers = result.scalars().all()
-    return [schemas.EmployeeOut.model_validate(t) for t in teachers]
+    employees = result.scalars().all()
+    return [schemas.EmployeeOut.model_validate(e) for e in employees]
 
 @app.post("/teachers/", response_model=schemas.EmployeeOut)
 async def create_teacher(
     teacher_data: schemas.EmployeeCreate,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(require_owner)
 ):
-    """Создание нового учителя (только для администратора)"""
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+    """Создание нового учителя или school_admin (только для owner)"""
     
     # Проверяем, существует ли пользователь с таким username
     result = await db.execute(
@@ -577,8 +622,9 @@ async def create_teacher(
     new_teacher = Employee(
         username=teacher_data.username,
         password_hash=hash_password(teacher_data.password),
-        role="teacher",
-        teacher_name=teacher_data.teacher_name
+        role=teacher_data.role if teacher_data.role else "teacher",
+        teacher_name=teacher_data.teacher_name,
+        school=teacher_data.school
     )
     
     db.add(new_teacher)
@@ -592,14 +638,12 @@ async def update_teacher(
     teacher_id: int,
     teacher_update: schemas.EmployeeUpdate,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(require_owner)
 ):
-    """Обновление учителя (только для администратора)"""
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
-    
+    """Обновление учителя или school_admin (только для owner)"""
+
     result = await db.execute(
-        select(Employee).where(Employee.id == teacher_id, Employee.role == "teacher")
+        select(Employee).where(Employee.id == teacher_id)
     )
     teacher = result.scalar_one_or_none()
     
@@ -626,7 +670,10 @@ async def update_teacher(
     
     if "teacher_name" in update_data:
         teacher.teacher_name = update_data["teacher_name"]
-    
+
+    if "school" in update_data:
+        teacher.school = update_data["school"]
+
     await db.commit()
     await db.refresh(teacher)
     
@@ -636,19 +683,21 @@ async def update_teacher(
 async def delete_teacher(
     teacher_id: int,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(require_owner)
 ):
-    """Удаление учителя (только для администратора). Группы учителя не удаляются."""
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
-    
+    """Удаление сотрудника (только для owner). Нельзя удалить owner."""
+
     result = await db.execute(
-        select(Employee).where(Employee.id == teacher_id, Employee.role == "teacher")
+        select(Employee).where(Employee.id == teacher_id)
     )
     teacher = result.scalar_one_or_none()
-    
+
     if not teacher:
-        raise HTTPException(status_code=404, detail="Учитель не найден")
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
+
+    # Нельзя удалить owner
+    if teacher.role == "owner":
+        raise HTTPException(status_code=400, detail="Невозможно удалить владельца системы")
     
     # Перед удалением учителя устанавливаем teacher_id в NULL для всех его групп
     # Сначала нужно сделать teacher_id nullable в группах, но для безопасности
@@ -662,17 +711,17 @@ async def delete_teacher(
         # Если есть группы, нельзя удалить учителя, так как teacher_id не nullable
         # Вместо этого можно либо запретить удаление, либо установить teacher_id в NULL
         # Но так как teacher_id не nullable, нужно либо изменить схему, либо запретить удаление
-        # Для безопасности запретим удаление учителя с группами
+        # Для безопасности запретим удаление сотрудника с группами
         raise HTTPException(
-            status_code=400, 
-            detail=f"Невозможно удалить учителя: у него есть {len(groups)} групп. Сначала удалите или переназначьте группы."
+            status_code=400,
+            detail=f"Невозможно удалить сотрудника: у него есть {len(groups)} групп. Сначала удалите или переназначьте группы."
         )
-    
-    # Удаляем учителя только если у него нет групп
+
+    # Удаляем сотрудника только если у него нет групп
     await db.delete(teacher)
     await db.commit()
-    
-    return {"message": "Учитель успешно удален"}
+
+    return {"message": "Сотрудник успешно удален"}
 
 # Exam registrations endpoints
 @app.get("/exam-registrations/", response_model=List[schemas.ExamRegistrationWithStudentResponse])
@@ -692,37 +741,43 @@ async def get_exam_registrations(
         username = user.get("username") or user.get("sub")
         if not username:
             return []  # Если username отсутствует, возвращаем пустой список
-        
+
         # Получаем ID учителя
         teacher_query = await db.execute(
             select(Employee.id).where(Employee.username == username)
         )
         teacher_id = teacher_query.scalar_one_or_none()
-        
+
         if not teacher_id:
             return []  # Если учитель не найден, возвращаем пустой список
-        
+
         # Получаем все группы этого учителя
         groups_query = await db.execute(
             select(StudyGroup.id).where(StudyGroup.teacher_id == teacher_id)
         )
         group_ids = [g[0] for g in groups_query.all()]
-        
+
         if not group_ids:
             return []  # Если у учителя нет групп, возвращаем пустой список
-        
+
         # Получаем всех студентов из этих групп через связующую таблицу
         students_query = await db.execute(
             select(group_student_association.c.student_id)
             .where(group_student_association.c.group_id.in_(group_ids))
         )
         student_ids = [s[0] for s in students_query.all()]
-        
+
         if not student_ids:
             return []  # Если в группах нет студентов, возвращаем пустой список
-        
+
         # Фильтруем записи по студентам из групп учителя
         query = query.where(ExamRegistration.student_id.in_(student_ids))
+
+    # Если пользователь - school_admin, фильтруем по школе
+    elif user_role == "school_admin":
+        school_admin_school = user.get("school")
+        if school_admin_school:
+            query = query.where(ExamRegistration.school == school_admin_school)
     
     # Фильтр по дате, если указан
     if date:
@@ -796,9 +851,9 @@ async def update_exam_registration(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user)
 ):
-    """Обновление записи на экзамен (только для администратора)"""
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+    """Обновление записи на экзамен (только для owner/admin)"""
+    if user.get("role") not in ["owner", "admin"]:
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для owner.")
     
     # Находим запись
     result = await db.execute(
@@ -961,7 +1016,7 @@ async def create_probnik(
     user: dict = Depends(get_current_user)
 ):
     """Создание нового пробника (только для админа)"""
-    if user.get("role") != "admin":
+    if user.get("role") not in ["owner", "admin"]:
         raise HTTPException(status_code=403, detail="Доступ запрещен")
     
     # Если создаем активный пробник, деактивируем остальные
@@ -1039,7 +1094,7 @@ async def update_probnik(
     user: dict = Depends(get_current_user)
 ):
     """Обновление пробника"""
-    if user.get("role") != "admin":
+    if user.get("role") not in ["owner", "admin"]:
         raise HTTPException(status_code=403, detail="Доступ запрещен")
     
     result = await db.execute(select(Probnik).where(Probnik.id == probnik_id))
@@ -1141,7 +1196,7 @@ async def delete_probnik(
     user: dict = Depends(get_current_user)
 ):
     """Удаление пробника"""
-    if user.get("role") != "admin":
+    if user.get("role") not in ["owner", "admin"]:
         raise HTTPException(status_code=403, detail="Доступ запрещен")
 
     result = await db.execute(select(Probnik).where(Probnik.id == probnik_id))
@@ -1240,11 +1295,9 @@ async def get_subject(
 async def create_subject(
     subject: schemas.SubjectCreate,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(require_owner)
 ):
-    """Создание нового предмета (только для администратора)"""
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+    """Создание нового предмета (только для owner)"""
 
     try:
         db_subject = await crud.create_subject(db, subject)
@@ -1272,11 +1325,9 @@ async def update_subject(
     subject_id: int,
     subject_update: schemas.SubjectUpdate,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(require_owner)
 ):
-    """Обновление предмета (только для администратора)"""
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+    """Обновление предмета (только для owner)"""
 
     try:
         db_subject = await crud.update_subject(db, subject_id, subject_update)
@@ -1306,17 +1357,327 @@ async def update_subject(
 async def delete_subject(
     subject_id: int,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(require_owner)
 ):
-    """Удаление предмета (только для администратора)"""
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Доступ запрещен. Только для администратора")
+    """Удаление предмета (только для owner)"""
 
     success = await crud.delete_subject(db, subject_id)
     if not success:
         raise HTTPException(status_code=404, detail="Предмет не найден")
 
     return {"message": "Предмет успешно удален"}
+
+
+# ==================== WORK SESSION ENDPOINTS ====================
+
+@app.post("/work-sessions/start", response_model=schemas.WorkSessionResponse)
+async def start_work_session(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Начать рабочую сессию"""
+    # Получаем ID сотрудника из токена
+    username = user.get("username") or user.get("sub")
+    result = await db.execute(select(Employee).where(Employee.username == username))
+    employee = result.scalar_one_or_none()
+
+    if not employee:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
+
+    try:
+        session = await crud.start_work_session(db, employee.id)
+        return schemas.WorkSessionResponse(
+            id=session.id,
+            employee_id=session.employee_id,
+            employee_name=employee.teacher_name,
+            start_time=session.start_time.isoformat(),
+            end_time=None,
+            duration_minutes=None
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/work-sessions/{session_id}/end", response_model=schemas.WorkSessionResponse)
+async def end_work_session(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Завершить рабочую сессию"""
+    try:
+        session = await crud.end_work_session(db, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Сессия не найдена")
+
+        # Получаем имя сотрудника
+        result = await db.execute(select(Employee).where(Employee.id == session.employee_id))
+        employee = result.scalar_one_or_none()
+
+        return schemas.WorkSessionResponse(
+            id=session.id,
+            employee_id=session.employee_id,
+            employee_name=employee.teacher_name if employee else None,
+            start_time=session.start_time.isoformat(),
+            end_time=session.end_time.isoformat() if session.end_time else None,
+            duration_minutes=session.duration_minutes
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/work-sessions/", response_model=List[schemas.WorkSessionResponse])
+async def get_work_sessions(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Получить историю рабочих сессий"""
+    # Owner видит всех, school_admin только свои
+    employee_id = None
+    if user.get("role") == "school_admin":
+        username = user.get("username") or user.get("sub")
+        result = await db.execute(select(Employee).where(Employee.username == username))
+        employee = result.scalar_one_or_none()
+        if employee:
+            employee_id = employee.id
+
+    sessions = await crud.get_work_sessions(db, employee_id)
+
+    return [
+        schemas.WorkSessionResponse(
+            id=s.id,
+            employee_id=s.employee_id,
+            employee_name=s.employee.teacher_name if s.employee else None,
+            start_time=s.start_time.isoformat(),
+            end_time=s.end_time.isoformat() if s.end_time else None,
+            duration_minutes=s.duration_minutes
+        )
+        for s in sessions
+    ]
+
+
+@app.get("/work-sessions/active", response_model=schemas.WorkSessionResponse | None)
+async def get_active_work_session(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Получить активную рабочую сессию текущего пользователя"""
+    username = user.get("username") or user.get("sub")
+    result = await db.execute(select(Employee).where(Employee.username == username))
+    employee = result.scalar_one_or_none()
+
+    if not employee:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
+
+    session = await crud.get_active_work_session(db, employee.id)
+
+    if not session:
+        return None
+
+    return schemas.WorkSessionResponse(
+        id=session.id,
+        employee_id=session.employee_id,
+        employee_name=employee.teacher_name,
+        start_time=session.start_time.isoformat(),
+        end_time=None,
+        duration_minutes=None
+    )
+
+
+# ==================== TASK ENDPOINTS ====================
+
+@app.post("/tasks/", response_model=schemas.TaskResponse)
+async def create_task(
+    task: schemas.TaskCreate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner)
+):
+    """Создать задачу (только для owner)"""
+    # Получаем ID создателя
+    username = user.get("username") or user.get("sub")
+    result = await db.execute(select(Employee).where(Employee.username == username))
+    employee = result.scalar_one_or_none()
+
+    if not employee:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
+
+    db_task = await crud.create_task(db, task.dict(), employee.id)
+
+    # Получаем имена создателя и исполнителя
+    created_by = employee
+    result = await db.execute(select(Employee).where(Employee.id == db_task.assigned_to_id))
+    assigned_to = result.scalar_one_or_none()
+
+    return schemas.TaskResponse(
+        id=db_task.id,
+        title=db_task.title,
+        description=db_task.description,
+        deadline=db_task.deadline.isoformat() if db_task.deadline else None,
+        status=db_task.status,
+        created_by_id=db_task.created_by_id,
+        created_by_name=created_by.teacher_name if created_by else None,
+        assigned_to_id=db_task.assigned_to_id,
+        assigned_to_name=assigned_to.teacher_name if assigned_to else None,
+        created_at=db_task.created_at.isoformat(),
+        updated_at=db_task.updated_at.isoformat()
+    )
+
+
+@app.get("/tasks/", response_model=List[schemas.TaskResponse])
+async def get_tasks(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Получить задачи (owner видит все, school_admin только свои)"""
+    employee_id = None
+    if user.get("role") == "school_admin":
+        username = user.get("username") or user.get("sub")
+        result = await db.execute(select(Employee).where(Employee.username == username))
+        employee = result.scalar_one_or_none()
+        if employee:
+            employee_id = employee.id
+
+    tasks = await crud.get_tasks(db, employee_id)
+
+    return [
+        schemas.TaskResponse(
+            id=t.id,
+            title=t.title,
+            description=t.description,
+            deadline=t.deadline.isoformat() if t.deadline else None,
+            status=t.status,
+            created_by_id=t.created_by_id,
+            created_by_name=t.created_by.teacher_name if t.created_by else None,
+            assigned_to_id=t.assigned_to_id,
+            assigned_to_name=t.assigned_to.teacher_name if t.assigned_to else None,
+            created_at=t.created_at.isoformat(),
+            updated_at=t.updated_at.isoformat()
+        )
+        for t in tasks
+    ]
+
+
+@app.put("/tasks/{task_id}", response_model=schemas.TaskResponse)
+async def update_task(
+    task_id: int,
+    task_update: schemas.TaskUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Обновить задачу"""
+    # Получаем задачу
+    db_task = await crud.get_task(db, task_id)
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    # school_admin может менять только статус своих задач
+    if user.get("role") == "school_admin":
+        username = user.get("username") or user.get("sub")
+        result = await db.execute(select(Employee).where(Employee.username == username))
+        employee = result.scalar_one_or_none()
+
+        if not employee or db_task.assigned_to_id != employee.id:
+            raise HTTPException(status_code=403, detail="Вы можете обновлять только свои задачи")
+
+        # school_admin может менять только статус
+        update_data = {"status": task_update.status} if task_update.status else {}
+    else:
+        # owner может менять все
+        update_data = task_update.dict(exclude_unset=True)
+
+    updated_task = await crud.update_task(db, task_id, update_data)
+
+    return schemas.TaskResponse(
+        id=updated_task.id,
+        title=updated_task.title,
+        description=updated_task.description,
+        deadline=updated_task.deadline.isoformat() if updated_task.deadline else None,
+        status=updated_task.status,
+        created_by_id=updated_task.created_by_id,
+        created_by_name=updated_task.created_by.teacher_name if updated_task.created_by else None,
+        assigned_to_id=updated_task.assigned_to_id,
+        assigned_to_name=updated_task.assigned_to.teacher_name if updated_task.assigned_to else None,
+        created_at=updated_task.created_at.isoformat(),
+        updated_at=updated_task.updated_at.isoformat()
+    )
+
+
+# ==================== REPORT ENDPOINTS ====================
+
+@app.post("/reports/", response_model=schemas.ReportResponse)
+async def create_report(
+    report: schemas.ReportCreate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Создать отчет"""
+    # Получаем ID сотрудника
+    username = user.get("username") or user.get("sub")
+    result = await db.execute(select(Employee).where(Employee.username == username))
+    employee = result.scalar_one_or_none()
+
+    if not employee:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
+
+    db_report = await crud.create_report(db, report.dict(), employee.id)
+
+    return schemas.ReportResponse(
+        id=db_report.id,
+        employee_id=db_report.employee_id,
+        employee_name=employee.teacher_name,
+        report_date=db_report.report_date.strftime("%Y-%m-%d"),
+        content=db_report.content,
+        created_at=db_report.created_at.isoformat()
+    )
+
+
+@app.get("/reports/", response_model=List[schemas.ReportResponse])
+async def get_reports(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Получить отчеты (owner видит все, school_admin только свои)"""
+    employee_id = None
+    if user.get("role") == "school_admin":
+        username = user.get("username") or user.get("sub")
+        result = await db.execute(select(Employee).where(Employee.username == username))
+        employee = result.scalar_one_or_none()
+        if employee:
+            employee_id = employee.id
+
+    reports = await crud.get_reports(db, employee_id)
+
+    return [
+        schemas.ReportResponse(
+            id=r.id,
+            employee_id=r.employee_id,
+            employee_name=r.employee.teacher_name if r.employee else None,
+            report_date=r.report_date.strftime("%Y-%m-%d"),
+            content=r.content,
+            created_at=r.created_at.isoformat()
+        )
+        for r in reports
+    ]
+
+
+# ==================== EMPLOYEE ENDPOINTS ====================
+
+@app.get("/employees/", response_model=List[schemas.EmployeeOut])
+async def get_employees(
+    role: Optional[str] = Query(None, description="Фильтр по роли"),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner)
+):
+    """Получить список сотрудников (только для owner)"""
+    query = select(Employee)
+
+    if role:
+        query = query.where(Employee.role == role)
+
+    result = await db.execute(query)
+    employees = result.scalars().all()
+
+    return [schemas.EmployeeOut.model_validate(e) for e in employees]
 
 
 if __name__ == "__main__":

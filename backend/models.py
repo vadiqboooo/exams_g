@@ -89,10 +89,13 @@ class Employee(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     password_hash = Column(String)
-    role = Column(String)  # "admin" or "teacher"
+    role = Column(String)  # "owner", "school_admin" or "teacher"
     teacher_name = Column(String, nullable=True)
-    
+    school = Column(String(100), nullable=True)  # "Байкальская" или "Лермонтова" для school_admin
+
     groups = relationship("StudyGroup", back_populates="teacher")
+    work_sessions = relationship("WorkSession", back_populates="employee")
+    reports = relationship("Report", back_populates="employee")
 
 class ExamRegistration(Base):
     """Запись на зимний пробник"""
@@ -177,4 +180,48 @@ class Subject(Base):
 
     is_active = Column(Boolean, default=True)  # Активен ли предмет
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow) 
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class WorkSession(Base):
+    """Рабочие сессии для учета времени school_admin"""
+    __tablename__ = 'work_sessions'
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=True)
+    duration_minutes = Column(Integer, nullable=True)
+
+    employee = relationship("Employee", back_populates="work_sessions")
+
+
+class Task(Base):
+    """Задачи для school_admin от owner"""
+    __tablename__ = 'tasks'
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    deadline = Column(DateTime, nullable=True)
+    status = Column(String(20), default='new')  # new, in_progress, completed
+    created_by_id = Column(Integer, ForeignKey('employees.id'), nullable=False)
+    assigned_to_id = Column(Integer, ForeignKey('employees.id'), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    created_by = relationship("Employee", foreign_keys=[created_by_id])
+    assigned_to = relationship("Employee", foreign_keys=[assigned_to_id])
+
+
+class Report(Base):
+    """Отчеты от school_admin"""
+    __tablename__ = 'reports'
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False)
+    report_date = Column(DateTime, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    employee = relationship("Employee", back_populates="reports") 

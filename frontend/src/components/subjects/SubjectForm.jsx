@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../../hooks/useApi';
-import Modal from '../common/Modal';
 import './SubjectForm.css';
 
 const SubjectForm = ({ subject, onClose, onSuccess }) => {
@@ -20,10 +19,21 @@ const SubjectForm = ({ subject, onClose, onSuccess }) => {
     is_active: true
   });
 
-  const [maxPerTaskInput, setMaxPerTaskInput] = useState('');
+  const [tasks, setTasks] = useState([]);  // [{label: "1", maxScore: 1}, ...]
   const [scaleInput, setScaleInput] = useState('');
-  const [currentTopic, setCurrentTopic] = useState({ task_number: 1, topic: '' });
   const [errors, setErrors] = useState({});
+
+  // Состояния для таблицы перевода баллов ЕГЭ
+  const [showScaleEditor, setShowScaleEditor] = useState(false);
+  const [scaleMarkers, setScaleMarkers] = useState([]);  // [{id, primaryScore, label, type, color}]
+  const [newMarker, setNewMarker] = useState({ primaryScore: '', label: '', type: 'custom' });
+
+  // Состояния для тем
+  const [showTopicsEditor, setShowTopicsEditor] = useState(false);
+  const [expandedTasks, setExpandedTasks] = useState(new Set());  // Набор индексов развернутых заданий
+  const [newTopicByTask, setNewTopicByTask] = useState({});  // {taskIndex: "название темы"}
+
+  const [hoverCard, setHoverCard] = useState({ visible: false, type: null, index: null, labelValue: '', scoreValue: '', position: {} });
 
   useEffect(() => {
     if (subject) {
@@ -40,8 +50,13 @@ const SubjectForm = ({ subject, onClose, onSuccess }) => {
         is_active: subject.is_active !== undefined ? subject.is_active : true
       });
 
-      // Заполняем поля ввода
-      setMaxPerTaskInput((subject.max_per_task || []).join(', '));
+      // Преобразуем max_per_task в tasks для редактирования
+      const maxPerTask = subject.max_per_task || [];
+      setTasks(maxPerTask.map((score, index) => ({
+        label: String(index + 1),
+        maxScore: score
+      })));
+
       setScaleInput((subject.primary_to_secondary_scale || []).join(', '));
     }
   }, [subject]);
@@ -75,33 +90,80 @@ const SubjectForm = ({ subject, onClose, onSuccess }) => {
     }
   };
 
-  const handleTasksCountChange = (e) => {
-    const count = parseInt(e.target.value) || 0;
-    setFormData(prev => ({
-      ...prev,
-      tasks_count: count,
-      // Автоматически подгоняем массив баллов под количество заданий
-      max_per_task: prev.max_per_task.length > count
-        ? prev.max_per_task.slice(0, count)
-        : [...prev.max_per_task, ...Array(count - prev.max_per_task.length).fill(1)]
-    }));
+  const handleTaskLabelChange = (index, newLabel) => {
+    const newTasks = [...tasks];
+    newTasks[index].label = newLabel;
+    setTasks(newTasks);
   };
 
-  const handleMaxPerTaskInputChange = (e) => {
-    const input = e.target.value;
-    setMaxPerTaskInput(input);
+  const handleTaskScoreChange = (index, newScore) => {
+    const score = parseInt(newScore) || 1;
+    const newTasks = [...tasks];
+    newTasks[index].maxScore = score;
+    setTasks(newTasks);
+  };
 
-    // Парсим массив баллов
-    const values = input.split(',').map(v => {
-      const num = parseInt(v.trim());
-      return isNaN(num) ? 1 : num;
+  const showHoverCard = (e, type, index) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setHoverCard({
+      visible: true,
+      type,
+      index,
+      labelValue: tasks[index].label,
+      scoreValue: String(tasks[index].maxScore),
+      position: {
+        top: rect.bottom + window.scrollY + 8,
+        left: rect.left + window.scrollX,
+      }
     });
+  };
 
-    setFormData(prev => ({
-      ...prev,
-      max_per_task: values,
-      tasks_count: values.length
-    }));
+  const hideHoverCard = () => {
+    setHoverCard({ visible: false, type: null, index: null, labelValue: '', scoreValue: '', position: {} });
+  };
+
+  // Закрытие hover card при клике вне её
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (hoverCard.visible && !e.target.closest('.hover-card') && !e.target.closest('.score-item')) {
+        hideHoverCard();
+      }
+    };
+
+    if (hoverCard.visible) {
+      document.addEventListener('click', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [hoverCard.visible]);
+
+  const handleHoverCardLabelChange = (e) => {
+    setHoverCard(prev => ({ ...prev, labelValue: e.target.value }));
+  };
+
+  const handleHoverCardScoreChange = (e) => {
+    setHoverCard(prev => ({ ...prev, scoreValue: e.target.value }));
+  };
+
+  const saveHoverCardValue = () => {
+    handleTaskLabelChange(hoverCard.index, hoverCard.labelValue);
+    handleTaskScoreChange(hoverCard.index, hoverCard.scoreValue);
+    hideHoverCard();
+  };
+
+  const handleAddTask = () => {
+    setTasks([...tasks, { label: String(tasks.length + 1), maxScore: 1 }]);
+  };
+
+  const handleRemoveTask = (index) => {
+    setTasks(tasks.filter((_, i) => i !== index));
+  };
+
+  // Вычисляем максимальный первичный балл
+  const getTotalPrimaryScore = () => {
+    return tasks.reduce((sum, task) => sum + task.maxScore, 0);
   };
 
   const handleScaleInputChange = (e) => {
@@ -125,22 +187,108 @@ const SubjectForm = ({ subject, onClose, onSuccess }) => {
     }));
   };
 
-  const handleAddTopic = () => {
-    if (!currentTopic.topic.trim()) return;
+  // Функции для работы с метками на шкале баллов
+  const handleAddMarker = () => {
+    const score = parseInt(newMarker.primaryScore);
+    const maxScore = getTotalPrimaryScore();
 
-    setFormData(prev => ({
-      ...prev,
-      topics: [...prev.topics, { ...currentTopic }]
-    }));
+    if (isNaN(score) || score < 0 || score > maxScore) {
+      alert(`Первичный балл должен быть от 0 до ${maxScore}`);
+      return;
+    }
 
-    setCurrentTopic({ task_number: currentTopic.task_number + 1, topic: '' });
+    // Проверяем, что таблица перевода заполнена
+    if (!formData.primary_to_secondary_scale || formData.primary_to_secondary_scale.length === 0) {
+      alert('Сначала заполните таблицу перевода баллов');
+      return;
+    }
+
+    // Проверяем, что для этого первичного балла есть тестовый балл
+    if (score >= formData.primary_to_secondary_scale.length) {
+      alert(`Для первичного балла ${score} нет тестового балла в таблице перевода`);
+      return;
+    }
+
+    if (!newMarker.label.trim()) {
+      alert('Введите название метки');
+      return;
+    }
+
+    const markerColors = {
+      passing: '#ef4444',    // красный
+      average: '#f59e0b',    // оранжевый
+      part1: '#3b82f6',      // синий
+      custom: '#8b5cf6'      // фиолетовый
+    };
+
+    const secondaryScore = formData.primary_to_secondary_scale[score];
+
+    const marker = {
+      id: Date.now(),
+      primaryScore: score,
+      secondaryScore: secondaryScore,
+      label: newMarker.label,
+      type: newMarker.type,
+      color: markerColors[newMarker.type] || markerColors.custom
+    };
+
+    setScaleMarkers(prev => [...prev, marker].sort((a, b) => a.secondaryScore - b.secondaryScore));
+    setNewMarker({ primaryScore: '', label: '', type: 'custom' });
   };
 
-  const handleRemoveTopic = (index) => {
+  const handleRemoveMarker = (id) => {
+    setScaleMarkers(prev => prev.filter(m => m.id !== id));
+  };
+
+  const getMarkerTypeName = (type) => {
+    const types = {
+      passing: 'Проходной балл',
+      average: 'Средний балл',
+      part1: 'Балл за 1 часть',
+      custom: 'Кастомная метка'
+    };
+    return types[type] || types.custom;
+  };
+
+  // Функции для работы с темами
+  const toggleTaskExpanded = (taskIndex) => {
+    setExpandedTasks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskIndex)) {
+        newSet.delete(taskIndex);
+      } else {
+        newSet.add(taskIndex);
+      }
+      return newSet;
+    });
+  };
+
+  const handleAddTopicToTask = (taskIndex) => {
+    const topicText = newTopicByTask[taskIndex]?.trim();
+    if (!topicText) return;
+
+    const taskNumber = taskIndex + 1;  // Номер задания (индекс + 1)
+
     setFormData(prev => ({
       ...prev,
-      topics: prev.topics.filter((_, i) => i !== index)
+      topics: [...prev.topics, { task_number: taskNumber, topic: topicText }]
     }));
+
+    // Очищаем поле ввода для этого задания
+    setNewTopicByTask(prev => ({ ...prev, [taskIndex]: '' }));
+  };
+
+  const handleRemoveTopicFromTask = (topicIndex) => {
+    setFormData(prev => ({
+      ...prev,
+      topics: prev.topics.filter((_, i) => i !== topicIndex)
+    }));
+  };
+
+  const getTopicsForTask = (taskNumber) => {
+    return formData.topics
+      .map((topic, index) => ({ ...topic, originalIndex: index }))
+      .filter(topic => topic.task_number === taskNumber);
   };
 
   // Функции для работы с таблицей оценок ОГЭ
@@ -183,7 +331,7 @@ const SubjectForm = ({ subject, onClose, onSuccess }) => {
   };
 
   const handleInitializeDefaultGradeScale = () => {
-    const maxScore = formData.max_per_task.reduce((a, b) => a + b, 0);
+    const maxScore = getTotalPrimaryScore();
     const defaultScale = [
       { grade: 2, min: 0, max: Math.floor(maxScore * 0.3) },
       { grade: 3, min: Math.floor(maxScore * 0.3) + 1, max: Math.floor(maxScore * 0.5) },
@@ -207,12 +355,14 @@ const SubjectForm = ({ subject, onClose, onSuccess }) => {
       newErrors.name = 'Укажите название предмета';
     }
 
-    if (formData.tasks_count <= 0) {
-      newErrors.tasks_count = 'Количество заданий должно быть больше 0';
+    if (tasks.length === 0) {
+      newErrors.tasks = 'Добавьте хотя бы одно задание';
     }
 
-    if (formData.max_per_task.length !== formData.tasks_count) {
-      newErrors.max_per_task = 'Количество баллов должно совпадать с количеством заданий';
+    // Проверяем, что все метки заданий заполнены
+    const emptyLabels = tasks.some(task => !task.label.trim());
+    if (emptyLabels) {
+      newErrors.tasks = 'Все задания должны иметь номер/название';
     }
 
     setErrors(newErrors);
@@ -227,6 +377,9 @@ const SubjectForm = ({ subject, onClose, onSuccess }) => {
     try {
       const payload = {
         ...formData,
+        // Преобразуем tasks в max_per_task для бэкенда
+        tasks_count: tasks.length,
+        max_per_task: tasks.map(task => task.maxScore),
         // Для ЕГЭ: таблица тестовых баллов, grade_scale = null
         // Для ОГЭ: таблица оценок, primary_to_secondary_scale = null
         primary_to_secondary_scale: formData.exam_type === 'ЕГЭ'
@@ -251,30 +404,55 @@ const SubjectForm = ({ subject, onClose, onSuccess }) => {
   };
 
   return (
-    <Modal onClose={onClose} className="subject-form-modal">
+    <div className="subject-form-container">
       <div className="subject-form">
-        <h2>{isEdit ? 'Редактировать предмет' : 'Добавить предмет'}</h2>
-
         <form onSubmit={handleSubmit}>
-          {/* Базовая информация */}
-          <div className="form-section">
-            <h3>Основная информация</h3>
+          <div className="form-columns">
+            {/* Левая колонка - Базовая информация */}
+            <div className="form-column-left">
+              <div className="form-section">
+                <div className="tasks-title-row">
+                  <h3>Основная информация</h3>
+                </div>
 
-            <div className="form-group">
-              <label htmlFor="code">
-                Код предмета <span className="required">*</span>
-              </label>
-              <input
-                type="text"
-                id="code"
-                name="code"
-                value={formData.code}
-                onChange={handleChange}
-                placeholder="rus, math_profile, infa_9"
-                disabled={isEdit}
-                className={errors.code ? 'error' : ''}
-              />
-              {errors.code && <span className="error-text">{errors.code}</span>}
+            <div className="form-row">
+              <div className="form-group form-group-code">
+                <label htmlFor="code">
+                  Код предмета <span className="required">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="code"
+                  name="code"
+                  value={formData.code}
+                  onChange={handleChange}
+                  placeholder="rus, math_profile, infa_9"
+                  disabled={isEdit}
+                  className={errors.code ? 'error' : ''}
+                />
+                {errors.code && <span className="error-text">{errors.code}</span>}
+              </div>
+
+              <div className="form-group form-group-toggle">
+                <label className="toggle-label-text">
+                  Статус
+                </label>
+                <div className="toggle-wrapper">
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      id="is_active"
+                      name="is_active"
+                      checked={formData.is_active}
+                      onChange={handleChange}
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                  <span className={`toggle-status-text ${formData.is_active ? 'active' : 'inactive'}`}>
+                    {formData.is_active ? 'Активен' : 'Неактивен'}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="form-group">
@@ -313,83 +491,273 @@ const SubjectForm = ({ subject, onClose, onSuccess }) => {
                 }
               </small>
             </div>
-
-            <div className="form-group">
-              <label>
-                <input
-                  type="checkbox"
-                  name="is_active"
-                  checked={formData.is_active}
-                  onChange={handleChange}
-                />
-                Активен
-              </label>
-            </div>
-          </div>
-
-          {/* Конфигурация заданий */}
-          <div className="form-section">
-            <h3>Задания и баллы</h3>
-
-            <div className="form-group">
-              <label htmlFor="max_per_task_input">
-                Максимальные баллы за задания <span className="required">*</span>
-              </label>
-              <input
-                type="text"
-                id="max_per_task_input"
-                value={maxPerTaskInput}
-                onChange={handleMaxPerTaskInputChange}
-                placeholder="1,1,2,3,1,1,..."
-                className={errors.max_per_task ? 'error' : ''}
-              />
-              <small className="help-text">
-                Введите баллы через запятую. Количество заданий: {formData.tasks_count}
-              </small>
-              {errors.max_per_task && <span className="error-text">{errors.max_per_task}</span>}
+              </div>
             </div>
 
-            <div className="max-scores-preview">
-              {formData.max_per_task.length > 0 && (
-                <div className="scores-grid">
-                  {formData.max_per_task.map((score, index) => (
-                    <div key={index} className="score-item">
-                      <span className="task-num">№{index + 1}</span>
-                      <span className="task-score">{score}б</span>
+            {/* Правая колонка - Конфигурация заданий */}
+            <div className="form-column-right">
+              <div className="form-section">
+                <div className="tasks-header">
+                  <div className="tasks-title-row">
+                    <div className="tasks-count-section">
+                      <h3>Задания</h3>
+                      <div className="tasks-count-controls">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (tasks.length > 0) {
+                              handleRemoveTask(tasks.length - 1);
+                            }
+                          }}
+                          className="btn-task-control"
+                          disabled={tasks.length === 0}
+                        >
+                          −
+                        </button>
+                        <span className="tasks-count-number">{tasks.length}</span>
+                        <button
+                          type="button"
+                          onClick={handleAddTask}
+                          className="btn-task-control"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
-                  ))}
+                    <div className="max-primary-score">
+                      <label>Первичный балл:</label>
+                      <strong>{getTotalPrimaryScore()}</strong>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
 
-            <div className="form-group">
-              <label>
-                Максимальный первичный балл: <strong>{formData.max_per_task.reduce((a, b) => a + b, 0)}</strong>
-              </label>
+                {errors.tasks && <span className="error-text">{errors.tasks}</span>}
+
+                <div className="max-scores-preview">
+                  {tasks.length > 0 ? (
+                    <div className="scores-grid">
+                      {tasks.map((task, index) => (
+                        <div
+                          key={index}
+                          className="score-item"
+                          onClick={(e) => showHoverCard(e, 'both', index)}
+                        >
+                          <span className="task-num">{task.label}</span>
+                          <span className="task-score">{task.maxScore}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="no-tasks">
+                      <p>Нет заданий. Добавьте задания для настройки предмета.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Hover Card для редактирования */}
+                {hoverCard.visible && (
+                  <div
+                    className="hover-card"
+                    style={{
+                      position: 'absolute',
+                      top: `${hoverCard.position.top}px`,
+                      left: `${hoverCard.position.left}px`,
+                      zIndex: 1000
+                    }}
+                  >
+                    <div className="hover-card-content">
+                      <div className="hover-card-field">
+                        <label className="hover-card-label">Номер/Название</label>
+                        <input
+                          type="text"
+                          value={hoverCard.labelValue}
+                          onChange={handleHoverCardLabelChange}
+                          className="hover-card-input"
+                          placeholder="1, 13.1, ГК1..."
+                          autoFocus
+                        />
+                      </div>
+                      <div className="hover-card-field">
+                        <label className="hover-card-label">Макс. балл</label>
+                        <input
+                          type="number"
+                          value={hoverCard.scoreValue}
+                          onChange={handleHoverCardScoreChange}
+                          className="hover-card-input"
+                          min="1"
+                        />
+                      </div>
+                      <div className="hover-card-actions">
+                        <button
+                          type="button"
+                          onClick={saveHoverCardValue}
+                          className="btn-save-hover"
+                        >
+                          Сохранить
+                        </button>
+                        <button
+                          type="button"
+                          onClick={hideHoverCard}
+                          className="btn-cancel-hover"
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Таблица перевода баллов - ТОЛЬКО ДЛЯ ЕГЭ */}
           {formData.exam_type === 'ЕГЭ' && (
             <div className="form-section">
-              <h3>Таблица перевода первичных баллов в тестовые (100-балльная шкала)</h3>
-
-              <div className="form-group">
-                <label htmlFor="scale_input">
-                  Таблица перевода (опционально для ЕГЭ)
-                </label>
-                <textarea
-                  id="scale_input"
-                  value={scaleInput}
-                  onChange={handleScaleInputChange}
-                  placeholder="0, 3, 5, 8, 10, 12, 14, 17, 20, 22, 24, 27, ..."
-                  rows="3"
-                />
-                <small className="help-text">
-                  Введите тестовые баллы (от 0 до 100) через запятую. Индекс массива = первичный балл, значение = тестовый балл.
-                  Например: первичный балл 0 → тестовый балл 0, первичный балл 1 → тестовый балл 3, и т.д.
-                </small>
+              <div className="scale-section-header">
+                <h3>Таблица перевода первичных баллов в тестовые (100-балльная шкала)</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowScaleEditor(!showScaleEditor)}
+                  className="btn-toggle-scale"
+                >
+                  {showScaleEditor ? '▼ Скрыть' : '▶ Настроить'}
+                </button>
               </div>
+
+              {showScaleEditor && (
+                <div className="scale-editor">
+                  {/* Timeline визуализация */}
+                  <div className="scale-timeline-section">
+                    <h4>Визуализация тестовых баллов (0-100) и метки</h4>
+
+                    {formData.primary_to_secondary_scale && formData.primary_to_secondary_scale.length > 0 ? (
+                      <div className="timeline-container">
+                        <div className="timeline-track">
+                          <div className="timeline-line"></div>
+
+                          {/* Метки на шкале */}
+                          {scaleMarkers.map(marker => {
+                            // Позиция рассчитывается по тестовому баллу (0-100)
+                            const position = marker.secondaryScore;
+
+                            return (
+                              <div
+                                key={marker.id}
+                                className="timeline-marker"
+                                style={{ left: `${position}%` }}
+                              >
+                                <div
+                                  className="marker-dot"
+                                  style={{ backgroundColor: marker.color }}
+                                ></div>
+                                <div className="marker-label" style={{ borderColor: marker.color }}>
+                                  <div className="marker-label-text">{marker.label}</div>
+                                  <div className="marker-score">
+                                    {marker.primaryScore} перв. → {marker.secondaryScore} тест.
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveMarker(marker.id)}
+                                    className="btn-remove-marker"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Шкала баллов - тестовые от 0 до 100 */}
+                        <div className="timeline-scale">
+                          <span>0</span>
+                          <span>25</span>
+                          <span>50</span>
+                          <span>75</span>
+                          <span>100</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="timeline-empty">
+                        <p>Сначала заполните таблицу перевода баллов ниже, чтобы добавлять метки на timeline.</p>
+                      </div>
+                    )}
+
+                    {/* Форма добавления метки */}
+                    <div className="marker-form">
+                      <div className="marker-form-fields">
+                        <div className="form-group-inline">
+                          <label>Первичный балл</label>
+                          <input
+                            type="number"
+                            value={newMarker.primaryScore}
+                            onChange={(e) => setNewMarker(prev => ({ ...prev, primaryScore: e.target.value }))}
+                            placeholder="0"
+                            min="0"
+                            max={getTotalPrimaryScore()}
+                          />
+                          <small className="help-text-inline">
+                            {newMarker.primaryScore && formData.primary_to_secondary_scale[parseInt(newMarker.primaryScore)] !== undefined
+                              ? `→ ${formData.primary_to_secondary_scale[parseInt(newMarker.primaryScore)]} тест.`
+                              : ''}
+                          </small>
+                        </div>
+
+                        <div className="form-group-inline">
+                          <label>Название</label>
+                          <input
+                            type="text"
+                            value={newMarker.label}
+                            onChange={(e) => setNewMarker(prev => ({ ...prev, label: e.target.value }))}
+                            placeholder="Название метки"
+                          />
+                        </div>
+
+                        <div className="form-group-inline">
+                          <label>Тип</label>
+                          <select
+                            value={newMarker.type}
+                            onChange={(e) => setNewMarker(prev => ({ ...prev, type: e.target.value }))}
+                          >
+                            <option value="passing">Проходной балл</option>
+                            <option value="average">Средний балл</option>
+                            <option value="part1">Балл за 1 часть</option>
+                            <option value="custom">Кастомная метка</option>
+                          </select>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleAddMarker}
+                          className="btn-add-marker"
+                        >
+                          + Добавить метку
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Таблица перевода (существующее поле) */}
+                  <div className="scale-data-section">
+                    <h4>Таблица перевода баллов</h4>
+                    <div className="form-group">
+                      <label htmlFor="scale_input">
+                        Таблица перевода (опционально для ЕГЭ)
+                      </label>
+                      <textarea
+                        id="scale_input"
+                        value={scaleInput}
+                        onChange={handleScaleInputChange}
+                        placeholder="0, 3, 5, 8, 10, 12, 14, 17, 20, 22, 24, 27, ..."
+                        rows="3"
+                      />
+                      <small className="help-text">
+                        Введите тестовые баллы (от 0 до 100) через запятую. Индекс массива = первичный балл, значение = тестовый балл.
+                      </small>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -486,65 +854,100 @@ const SubjectForm = ({ subject, onClose, onSuccess }) => {
             </div>
           )}
 
-          {/* Темы */}
+          {/* Темы по заданиям */}
           <div className="form-section">
-            <h3>Темы по заданиям (опционально)</h3>
-
-            <div className="topics-add">
-              <input
-                type="number"
-                min="1"
-                max={formData.tasks_count}
-                value={currentTopic.task_number}
-                onChange={(e) => setCurrentTopic(prev => ({
-                  ...prev,
-                  task_number: parseInt(e.target.value) || 1
-                }))}
-                placeholder="№ задания"
-                className="topic-number-input"
-              />
-              <input
-                type="text"
-                value={currentTopic.topic}
-                onChange={(e) => setCurrentTopic(prev => ({
-                  ...prev,
-                  topic: e.target.value
-                }))}
-                placeholder="Название темы"
-                className="topic-name-input"
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddTopic();
-                  }
-                }}
-              />
+            <div className="topics-section-header">
+              <h3>Темы по заданиям (опционально)</h3>
               <button
                 type="button"
-                onClick={handleAddTopic}
-                className="btn-add-topic"
+                onClick={() => setShowTopicsEditor(!showTopicsEditor)}
+                className="btn-toggle-topics"
               >
-                ➕ Добавить
+                {showTopicsEditor ? '▼ Скрыть' : '▶ Настроить темы'}
               </button>
             </div>
 
-            {formData.topics.length > 0 && (
-              <div className="topics-list">
-                {formData.topics
-                  .sort((a, b) => a.task_number - b.task_number)
-                  .map((topic, index) => (
-                    <div key={index} className="topic-item">
-                      <span className="topic-number">Задание {topic.task_number}:</span>
-                      <span className="topic-name">{topic.topic}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTopic(index)}
-                        className="btn-remove-topic"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
+            {showTopicsEditor && (
+              <div className="topics-editor">
+                {tasks.length > 0 ? (
+                  <div className="tasks-topics-list">
+                    {tasks.map((task, taskIndex) => {
+                      const taskNumber = taskIndex + 1;
+                      const taskTopics = getTopicsForTask(taskNumber);
+                      const isExpanded = expandedTasks.has(taskIndex);
+
+                      return (
+                        <div key={taskIndex} className="task-topics-item">
+                          <div
+                            className="task-topics-header"
+                            onClick={() => toggleTaskExpanded(taskIndex)}
+                          >
+                            <div className="task-info">
+                              <span className="task-label">Задание {task.label}</span>
+                              <span className="task-topics-count">
+                                {taskTopics.length > 0 ? `${taskTopics.length} ${taskTopics.length === 1 ? 'тема' : taskTopics.length < 5 ? 'темы' : 'тем'}` : 'нет тем'}
+                              </span>
+                            </div>
+                            <span className="task-expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="task-topics-content">
+                              {/* Список тем для задания */}
+                              {taskTopics.length > 0 && (
+                                <div className="task-topics-existing">
+                                  {taskTopics.map((topic) => (
+                                    <div key={topic.originalIndex} className="topic-tag">
+                                      <span className="topic-tag-text">{topic.topic}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveTopicFromTask(topic.originalIndex)}
+                                        className="btn-remove-topic-tag"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Форма добавления темы */}
+                              <div className="task-topic-add-form">
+                                <input
+                                  type="text"
+                                  value={newTopicByTask[taskIndex] || ''}
+                                  onChange={(e) => setNewTopicByTask(prev => ({
+                                    ...prev,
+                                    [taskIndex]: e.target.value
+                                  }))}
+                                  placeholder="Введите название темы"
+                                  className="topic-input"
+                                  onKeyPress={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleAddTopicToTask(taskIndex);
+                                    }
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddTopicToTask(taskIndex)}
+                                  className="btn-add-topic-inline"
+                                >
+                                  + Добавить
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="no-tasks-for-topics">
+                    <p>Сначала добавьте задания выше, чтобы настроить темы.</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -560,7 +963,7 @@ const SubjectForm = ({ subject, onClose, onSuccess }) => {
           </div>
         </form>
       </div>
-    </Modal>
+    </div>
   );
 };
 

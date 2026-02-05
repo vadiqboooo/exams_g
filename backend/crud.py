@@ -1,9 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from models import Student, Exam, StudyGroup, Employee, ExamType, Subject
+from models import Student, Exam, StudyGroup, Employee, ExamType, Subject, WorkSession, Task, Report
 from schemas import StudentCreate, StudentUpdate, ExamCreate, ExamUpdate, GroupCreate, GroupUpdate, SubjectCreate, SubjectUpdate
 from typing import List, Optional
+from datetime import datetime
 import json
 import secrets
 
@@ -547,3 +548,184 @@ async def delete_subject(db: AsyncSession, subject_id: int):
     await db.delete(db_subject)
     await db.commit()
     return True
+
+
+# ==================== WORK SESSION CRUD ====================
+
+async def start_work_session(db: AsyncSession, employee_id: int):
+    """Начать рабочую сессию"""
+    # Проверяем, нет ли уже активной сессии
+    active_session = await get_active_work_session(db, employee_id)
+    if active_session:
+        raise ValueError("У сотрудника уже есть активная рабочая сессия")
+
+    db_session = WorkSession(
+        employee_id=employee_id,
+        start_time=datetime.utcnow()
+    )
+    db.add(db_session)
+    await db.commit()
+    await db.refresh(db_session)
+    return db_session
+
+
+async def end_work_session(db: AsyncSession, session_id: int):
+    """Завершить рабочую сессию"""
+    result = await db.execute(select(WorkSession).where(WorkSession.id == session_id))
+    db_session = result.scalar_one_or_none()
+
+    if db_session is None:
+        return None
+
+    if db_session.end_time is not None:
+        raise ValueError("Эта сессия уже завершена")
+
+    db_session.end_time = datetime.utcnow()
+    # Вычисляем продолжительность в минутах
+    duration = (db_session.end_time - db_session.start_time).total_seconds() / 60
+    db_session.duration_minutes = int(duration)
+
+    await db.commit()
+    await db.refresh(db_session)
+    return db_session
+
+
+async def get_active_work_session(db: AsyncSession, employee_id: int):
+    """Получить активную рабочую сессию сотрудника"""
+    result = await db.execute(
+        select(WorkSession)
+        .where(WorkSession.employee_id == employee_id, WorkSession.end_time == None)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_work_sessions(db: AsyncSession, employee_id: Optional[int] = None):
+    """Получить рабочие сессии"""
+    query = select(WorkSession).options(selectinload(WorkSession.employee))
+
+    if employee_id is not None:
+        query = query.where(WorkSession.employee_id == employee_id)
+
+    query = query.order_by(WorkSession.start_time.desc())
+
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+# ==================== TASK CRUD ====================
+
+async def create_task(db: AsyncSession, task_data: dict, created_by_id: int):
+    """Создать задачу"""
+    # Парсим deadline если есть
+    deadline = None
+    if task_data.get("deadline"):
+        try:
+            deadline = datetime.fromisoformat(task_data["deadline"].replace("Z", "+00:00"))
+        except:
+            pass
+
+    db_task = Task(
+        title=task_data["title"],
+        description=task_data.get("description"),
+        deadline=deadline,
+        created_by_id=created_by_id,
+        assigned_to_id=task_data["assigned_to_id"]
+    )
+    db.add(db_task)
+    await db.commit()
+    await db.refresh(db_task)
+    return db_task
+
+
+async def get_tasks(db: AsyncSession, employee_id: Optional[int] = None, created_by_id: Optional[int] = None):
+    """Получить задачи"""
+    query = select(Task).options(
+        selectinload(Task.created_by),
+        selectinload(Task.assigned_to)
+    )
+
+    if employee_id is not None:
+        query = query.where(Task.assigned_to_id == employee_id)
+
+    if created_by_id is not None:
+        query = query.where(Task.created_by_id == created_by_id)
+
+    query = query.order_by(Task.created_at.desc())
+
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+async def get_task(db: AsyncSession, task_id: int):
+    """Получить задачу по ID"""
+    result = await db.execute(
+        select(Task)
+        .options(selectinload(Task.created_by), selectinload(Task.assigned_to))
+        .where(Task.id == task_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_task(db: AsyncSession, task_id: int, task_update: dict):
+    """Обновить задачу"""
+    result = await db.execute(select(Task).where(Task.id == task_id))
+    db_task = result.scalar_one_or_none()
+
+    if db_task is None:
+        return None
+
+    # Обновляем поля
+    if "title" in task_update and task_update["title"] is not None:
+        db_task.title = task_update["title"]
+
+    if "description" in task_update and task_update["description"] is not None:
+        db_task.description = task_update["description"]
+
+    if "deadline" in task_update and task_update["deadline"] is not None:
+        try:
+            db_task.deadline = datetime.fromisoformat(task_update["deadline"].replace("Z", "+00:00"))
+        except:
+            pass
+
+    if "status" in task_update and task_update["status"] is not None:
+        db_task.status = task_update["status"]
+
+    if "assigned_to_id" in task_update and task_update["assigned_to_id"] is not None:
+        db_task.assigned_to_id = task_update["assigned_to_id"]
+
+    db_task.updated_at = datetime.utcnow()
+
+    await db.commit()
+    await db.refresh(db_task)
+    return db_task
+
+
+# ==================== REPORT CRUD ====================
+
+async def create_report(db: AsyncSession, report_data: dict, employee_id: int):
+    """Создать отчет"""
+    # Парсим дату
+    report_date = datetime.fromisoformat(report_data["report_date"])
+
+    db_report = Report(
+        employee_id=employee_id,
+        report_date=report_date,
+        content=report_data["content"]
+    )
+    db.add(db_report)
+    await db.commit()
+    await db.refresh(db_report)
+    return db_report
+
+
+async def get_reports(db: AsyncSession, employee_id: Optional[int] = None):
+    """Получить отчеты"""
+    query = select(Report).options(selectinload(Report.employee))
+
+    if employee_id is not None:
+        query = query.where(Report.employee_id == employee_id)
+
+    query = query.order_by(Report.created_at.desc())
+
+    result = await db.execute(query)
+    return result.scalars().all()

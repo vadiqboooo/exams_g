@@ -33,10 +33,13 @@ export default function Login({ showNotification }) {
         params: { username, password },
       });
 
-      // Сохраняем токен и роль
+      // Сохраняем токен, роль и школу
       localStorage.setItem("token", resp.data.access_token);
       localStorage.setItem("role", resp.data.role);
       localStorage.setItem("teacher_name", resp.data.teacher_name);
+      if (resp.data.school) {
+        localStorage.setItem("school", resp.data.school);
+      }
 
       // Используем переданную функцию или локальную
       if (showNotification) {

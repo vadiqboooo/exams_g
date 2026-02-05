@@ -19,8 +19,8 @@ const TeacherList = ({ showNotification }) => {
       const response = await api.get('/teachers/');
       setTeachers(response.data || []);
     } catch (err) {
-      console.error('Ошибка загрузки учителей:', err);
-      showNotification('Ошибка загрузки учителей', 'error');
+      console.error('Ошибка загрузки сотрудников:', err);
+      showNotification('Ошибка загрузки сотрудников', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -37,18 +37,18 @@ const TeacherList = ({ showNotification }) => {
   };
 
   const handleDelete = async (teacher) => {
-    if (!window.confirm(`Вы уверены, что хотите удалить учителя "${teacher.teacher_name}" (${teacher.username})?`)) {
+    if (!window.confirm(`Вы уверены, что хотите удалить сотрудника "${teacher.teacher_name}" (${teacher.username})?`)) {
       return;
     }
 
     try {
       await api.delete(`/teachers/${teacher.id}`);
-      showNotification('Учитель успешно удален', 'success');
+      showNotification('Сотрудник успешно удален', 'success');
       loadTeachers();
     } catch (err) {
-      console.error('Ошибка удаления учителя:', err);
+      console.error('Ошибка удаления сотрудника:', err);
       const errorMessage = err.response?.data?.detail || err.message || 'Неизвестная ошибка';
-      showNotification('Ошибка удаления учителя: ' + errorMessage, 'error');
+      showNotification('Ошибка удаления сотрудника: ' + errorMessage, 'error');
     }
   };
 
@@ -65,7 +65,7 @@ const TeacherList = ({ showNotification }) => {
   if (isLoading) {
     return (
       <div className="teachers-container">
-        <div className="loading">Загрузка учителей...</div>
+        <div className="loading">Загрузка сотрудников...</div>
       </div>
     );
   }
@@ -73,15 +73,15 @@ const TeacherList = ({ showNotification }) => {
   return (
     <div className="teachers-container">
       <div className="section-header">
-        <h2>Учителя</h2>
+        <h2>Сотрудники</h2>
         <button onClick={handleCreate} className="btn-primary">
-          + Добавить учителя
+          + Добавить сотрудника
         </button>
       </div>
 
       {teachers.length === 0 ? (
         <div className="no-teachers">
-          <p>Нет учителей. Добавьте первого учителя.</p>
+          <p>Нет сотрудников. Добавьте первого сотрудника.</p>
         </div>
       ) : (
         <div className="teachers-list">
@@ -91,6 +91,8 @@ const TeacherList = ({ showNotification }) => {
                 <th>ID</th>
                 <th>Имя пользователя</th>
                 <th>Имя учителя</th>
+                <th>Роль</th>
+                <th>Школа</th>
                 <th>Действия</th>
               </tr>
             </thead>
@@ -100,6 +102,8 @@ const TeacherList = ({ showNotification }) => {
                   <td>{teacher.id}</td>
                   <td>{teacher.username}</td>
                   <td>{teacher.teacher_name || '-'}</td>
+                  <td>{teacher.role === 'school_admin' ? 'Админ школы' : teacher.role === 'owner' ? 'Владелец' : 'Учитель'}</td>
+                  <td>{teacher.school || '-'}</td>
                   <td>
                     <div className="action-buttons">
                       <button

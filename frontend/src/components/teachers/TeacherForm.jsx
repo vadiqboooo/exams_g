@@ -5,7 +5,9 @@ const TeacherForm = ({ teacher, onClose, onSuccess, showNotification, teachers =
   const [formData, setFormData] = useState({
     username: '',
     password: '',
-    teacher_name: ''
+    teacher_name: '',
+    role: 'teacher',
+    school: ''
   });
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
@@ -15,7 +17,9 @@ const TeacherForm = ({ teacher, onClose, onSuccess, showNotification, teachers =
       setFormData({
         username: teacher.username || '',
         password: '', // Пароль не заполняем при редактировании
-        teacher_name: teacher.teacher_name || ''
+        teacher_name: teacher.teacher_name || '',
+        role: teacher.role || 'teacher',
+        school: teacher.school || ''
       });
     }
   }, [teacher]);
@@ -105,25 +109,27 @@ const TeacherForm = ({ teacher, onClose, onSuccess, showNotification, teachers =
         // Обновление существующего учителя
         const updateData = {
           username: formData.username,
-          teacher_name: formData.teacher_name
+          teacher_name: formData.teacher_name,
+          school: formData.role === 'school_admin' ? formData.school : null
         };
-        
+
         // Добавляем пароль только если он указан
         if (formData.password) {
           updateData.password = formData.password;
         }
-        
+
         await api.put(`/teachers/${teacher.id}`, updateData);
-        showNotification('Учитель успешно обновлен', 'success');
+        showNotification(`${formData.role === 'school_admin' ? 'Администратор' : 'Учитель'} успешно обновлен`, 'success');
       } else {
-        // Создание нового учителя
+        // Создание нового учителя или school_admin
         await api.post('/teachers/', {
           username: formData.username,
           password: formData.password,
           teacher_name: formData.teacher_name,
-          role: 'teacher'
+          role: formData.role,
+          school: formData.role === 'school_admin' ? formData.school : null
         });
-        showNotification('Учитель успешно создан', 'success');
+        showNotification(`${formData.role === 'school_admin' ? 'Администратор' : 'Учитель'} успешно создан`, 'success');
       }
       onSuccess();
     } catch (err) {
@@ -137,7 +143,7 @@ const TeacherForm = ({ teacher, onClose, onSuccess, showNotification, teachers =
 
   return (
     <div className="teacher-form">
-      <h3>{teacher ? 'Редактировать учителя' : 'Добавить учителя'}</h3>
+      <h3>{teacher ? 'Редактировать сотрудника' : 'Добавить сотрудника'}</h3>
       
       <form onSubmit={handleSubmit}>
         <div className="form-group">
@@ -176,7 +182,7 @@ const TeacherForm = ({ teacher, onClose, onSuccess, showNotification, teachers =
 
         <div className="form-group">
           <label htmlFor="teacher_name">
-            Имя учителя <span className="required">*</span>
+            Имя сотрудника <span className="required">*</span>
           </label>
           <input
             type="text"
@@ -189,6 +195,43 @@ const TeacherForm = ({ teacher, onClose, onSuccess, showNotification, teachers =
           />
           {errors.teacher_name && <span className="error-message">{errors.teacher_name}</span>}
         </div>
+
+        <div className="form-group">
+          <label htmlFor="role">
+            Роль <span className="required">*</span>
+          </label>
+          <select
+            id="role"
+            name="role"
+            value={formData.role}
+            onChange={handleChange}
+            disabled={isLoading || teacher}
+          >
+            <option value="teacher">Учитель</option>
+            <option value="school_admin">Администратор школы</option>
+            <option value="owner">Владелец</option>
+          </select>
+        </div>
+
+        {formData.role === 'school_admin' && (
+          <div className="form-group">
+            <label htmlFor="school">
+              Школа <span className="required">*</span>
+            </label>
+            <select
+              id="school"
+              name="school"
+              value={formData.school}
+              onChange={handleChange}
+              disabled={isLoading}
+              required
+            >
+              <option value="">Выберите школу</option>
+              <option value="Байкальская">Байкальская</option>
+              <option value="Лермонтова">Лермонтова</option>
+            </select>
+          </div>
+        )}
 
         <div className="form-actions">
           <button type="button" onClick={onClose} className="btn-secondary" disabled={isLoading}>

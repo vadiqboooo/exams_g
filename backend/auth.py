@@ -54,6 +54,21 @@ def create_access_token(data: dict):
 def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload  # {sub, role, teacher_name}
+        return payload  # {sub, role, teacher_name, school}
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+# ---- Helper функции для проверки прав доступа ----
+def require_owner(user: dict = Depends(get_current_user)):
+    """Требует роль owner или admin (для обратной совместимости)"""
+    if user.get("role") not in ["owner", "admin"]:
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Требуется роль owner.")
+    return user
+
+
+def require_owner_or_school_admin(user: dict = Depends(get_current_user)):
+    """Требует роль owner, admin или school_admin"""
+    if user.get("role") not in ["owner", "admin", "school_admin"]:
+        raise HTTPException(status_code=403, detail="Доступ запрещен. Требуется роль owner или school_admin.")
+    return user

@@ -1,5 +1,5 @@
 .subject-manager {
-  padding: 20px;
+  padding: 0;
   max-width: 1400px;
   margin: 0 auto;
 }
@@ -84,4 +84,69 @@
   padding: 40px;
   color: #6b7280;
   font-size: 16px;
+}
+
+/* Заголовок формы редактирования */
+.subject-form-header {
+  margin-bottom: 24px;
+}
+
+.subject-form-header h1 {
+  margin: 16px 0 0 0;
+  font-size: 28px;
+  color: #1f2937;
+}
+
+.btn-back {
+  background: transparent;
+  color: #3b82f6;
+  border: 2px solid #3b82f6;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-back:hover {
+  background: #3b82f6;
+  color: white;
+  transform: translateX(-2px);
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .subject-manager {
+    padding: 0;
+  }
+
+  .subject-manager-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .subject-manager-header h1 {
+    font-size: 24px;
+  }
+
+  .btn-primary {
+    justify-content: center;
+  }
+
+  .subject-filters {
+    flex-direction: column;
+  }
+
+  .filter-btn {
+    width: 100%;
+  }
+
+  .subject-form-header h1 {
+    font-size: 24px;
+  }
 }

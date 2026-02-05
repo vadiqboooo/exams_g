@@ -146,9 +146,9 @@ const StudentResults = ({ student, exams, groups, showNotification, onStudentUpd
   // Функция для получения фонового цвета карточки в зависимости от статуса
   const getCardBackgroundColor = (status) => {
     if (!status || !status.trim()) return null;
-    
+
     const colorMap = {
-      'informed': '#f0fdf4', // тускло зеленый
+      'informed': null, // без заливки
       'callback': '#fefce8', // тускло желтый
       'no_answer': '#faf5ff' // тускло фиолетовый
     };

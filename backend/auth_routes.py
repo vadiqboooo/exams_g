@@ -28,13 +28,15 @@ async def login(username: str, password: str, db: AsyncSession = Depends(get_db)
         "sub": user.username,
         "username": user.username,
         "role": user.role,
-        "teacher_name": user.teacher_name
+        "teacher_name": user.teacher_name,
+        "school": user.school
     })
 
     return LoginResponse(
         access_token=token,
         role=user.role,
-        teacher_name=user.teacher_name
+        teacher_name=user.teacher_name,
+        school=user.school
     )
 
 
@@ -63,7 +65,8 @@ async def register(data: EmployeeCreate, db: AsyncSession = Depends(get_db)):
         username=data.username,
         password_hash=hash_password(data.password),
         role=role,
-        teacher_name=data.teacher_name
+        teacher_name=data.teacher_name,
+        school=data.school
     )
 
     db.add(new_user)

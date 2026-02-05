@@ -13,22 +13,28 @@ import RegistrationsTab from './components/registrations/RegistrationsView';
 import ProbnikTab from './components/probnik/ProbnikManager';
 import TeachersTab from './components/teachers/TeacherList';
 import SubjectsTab from './components/subjects/SubjectManager';
+import TimeTrackerTab from './components/timetracker/TimeTrackerTab';
+import TasksTab from './components/tasks/TasksTab';
+import ReportsTab from './components/reports/ReportsTab';
 import Notification from './components/common/Notification';
 import Login from "./pages/Login";
 import PublicResults from "./pages/PublicResults";
 
 import './styles/App.css';
 
-// Базовый список вкладок
+// Базовый список вкладок с ролями
 const allTabs = [
-  { id: 'teachers', label: 'Учителя', adminOnly: true },
-  { id: 'students', label: 'Студенты', adminOnly: true },
-  { id: 'exams', label: 'Экзамены', adminOnly: false },
-  { id: 'results', label: 'Результаты', adminOnly: true },
-  { id: 'groups', label: 'Группы', adminOnly: false },
-  { id: 'registrations', label: 'Записи на экзамен', adminOnly: false },
-  { id: 'probnik', label: 'Пробник', adminOnly: true },
-  { id: 'subjects', label: 'Предметы', adminOnly: true }
+  { id: 'teachers', label: 'Сотрудники', ownerOnly: true },
+  { id: 'students', label: 'Студенты', roles: ['owner', 'admin', 'school_admin'] },
+  { id: 'exams', label: 'Экзамены', roles: ['owner', 'admin', 'teacher'] },
+  { id: 'results', label: 'Результаты', roles: ['owner', 'admin', 'school_admin'] },
+  { id: 'groups', label: 'Группы', roles: ['owner', 'admin', 'teacher', 'school_admin'] },
+  { id: 'registrations', label: 'Записи на экзамен', roles: ['owner', 'admin', 'teacher', 'school_admin'] },
+  { id: 'probnik', label: 'Пробник', ownerOnly: true },
+  { id: 'subjects', label: 'Предметы', ownerOnly: true },
+  { id: 'time_tracker', label: 'Рабочее время', roles: ['owner', 'school_admin'] },
+  { id: 'tasks', label: 'Задачи', roles: ['owner', 'school_admin'] },
+  { id: 'reports', label: 'Отчеты', roles: ['owner', 'school_admin'] }
 ];
 
 function App() {
@@ -50,12 +56,17 @@ function App() {
   const token = localStorage.getItem("token");
   const teacherName = localStorage.getItem("teacher_name") || "Пользователь";
   const userRole = localStorage.getItem("role") || "teacher";
-  const isAdmin = userRole === "admin";
-  
-  // Начальная вкладка: для учителей - "Экзамены", для админов - "Студенты"
+  const school = localStorage.getItem("school") || null;
+  const isOwner = userRole === "owner" || userRole === "admin";
+  const isSchoolAdmin = userRole === "school_admin";
+  const isAdmin = isOwner; // Для обратной совместимости
+
+  // Начальная вкладка: зависит от роли
   const getInitialTab = () => {
     const role = localStorage.getItem("role") || "teacher";
-    return role === "admin" ? 'students' : 'exams';
+    if (role === "owner" || role === "admin") return 'students';
+    if (role === "school_admin") return 'students';
+    return 'exams';
   };
   
   const [activeTab, setActiveTab] = useState(getInitialTab);
@@ -75,23 +86,38 @@ function App() {
 
   // Фильтруем вкладки в зависимости от роли
   const availableTabs = useMemo(() => {
-    return allTabs.filter(tab => isAdmin || !tab.adminOnly);
-  }, [isAdmin]);
+    return allTabs.filter(tab => {
+      // Если вкладка только для owner
+      if (tab.ownerOnly) {
+        return isOwner;
+      }
+      // Если указаны роли, проверяем вхождение
+      if (tab.roles) {
+        return tab.roles.includes(userRole);
+      }
+      return true;
+    });
+  }, [userRole, isOwner]);
 
-  // Если учитель пытается открыть админские вкладки, перенаправляем на "Экзамены"
+  // Проверяем доступ к текущей вкладке
   useEffect(() => {
-    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'teachers' || activeTab === 'probnik' || activeTab === 'subjects')) {
-      setActiveTab('exams');
+    const currentTab = allTabs.find(tab => tab.id === activeTab);
+    if (!currentTab) return;
+
+    let hasAccess = true;
+    if (currentTab.ownerOnly && !isOwner) {
+      hasAccess = false;
+    } else if (currentTab.roles && !currentTab.roles.includes(userRole)) {
+      hasAccess = false;
     }
-  }, [isAdmin, activeTab]);
+
+    if (!hasAccess) {
+      setActiveTab(getInitialTab());
+    }
+  }, [userRole, activeTab, isOwner]);
 
   // ----- ЕСЛИ ВОШЁЛ → ПОКАЗАТЬ ОСНОВНОЙ ИНТЕРФЕЙС -----
   const renderTabContent = useMemo(() => {
-    // Если учитель пытается открыть админские вкладки, показываем экзамены
-    if (!isAdmin && (activeTab === 'students' || activeTab === 'results' || activeTab === 'teachers' || activeTab === 'probnik' || activeTab === 'subjects')) {
-      return <ExamsTab showNotification={stableShowNotification} />;
-    }
-
     switch (activeTab) {
       case 'students':
         return <StudentsTab showNotification={stableShowNotification} />;
@@ -109,16 +135,23 @@ function App() {
         return <ProbnikTab showNotification={stableShowNotification} />;
       case 'subjects':
         return <SubjectsTab showNotification={stableShowNotification} />;
+      case 'time_tracker':
+        return <TimeTrackerTab showNotification={stableShowNotification} userRole={userRole} />;
+      case 'tasks':
+        return <TasksTab showNotification={stableShowNotification} userRole={userRole} />;
+      case 'reports':
+        return <ReportsTab showNotification={stableShowNotification} userRole={userRole} />;
       default:
         return null;
     }
-  }, [activeTab, stableShowNotification, isAdmin]);
+  }, [activeTab, stableShowNotification, isAdmin, userRole]);
 
   // Функция выхода (мемоизируем, чтобы не вызывать перерендеры)
   const logout = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("role");
     localStorage.removeItem("teacher_name");
+    localStorage.removeItem("school");
     window.location.reload();
   }, []);
 
