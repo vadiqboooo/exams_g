@@ -1,4 +1,5 @@
 import React from 'react';
+import { SUBJECT_OPTIONS } from '../../services/constants';
 
 const Filters = ({ filters, groups, onFilterChange, onClearFilters }) => {
   // Убедимся, что groups - это массив
@@ -39,15 +40,11 @@ const Filters = ({ filters, groups, onFilterChange, onClearFilters }) => {
             onChange={(e) => onFilterChange('subject', e.target.value)}
           >
             <option value="">Все предметы</option>
-            <option value="rus">Русский язык</option>
-            <option value="math_profile">Математика (профильная)</option>
-            <option value="math_base">Математика (базовая)</option>
-            <option value="phys">Физика</option>
-            <option value="infa">Информатика</option>
-            <option value="bio">Биология</option>
-            <option value="hist">История</option>
-            <option value="soc">Обществознание</option>
-            <option value="eng">Английский язык</option>
+            {SUBJECT_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.value.endsWith('_9') ? `${option.label} (ОГЭ)` : option.label}
+              </option>
+            ))}
           </select>
         </div>
 

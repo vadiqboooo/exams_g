@@ -96,10 +96,24 @@ const ResultsView = ({ showNotification }) => {
 
     // Фильтр по группе
     if (filters.groupId) {
-      const group = groupsArray.find(g => g.id === parseInt(filters.groupId));
-      if (group) {
-        const groupStudentIds = group.students?.map(s => s.id) || [];
-        result = result.filter(s => groupStudentIds.includes(s.id));
+      const groupId = parseInt(filters.groupId);
+
+      // Специальная группа (ID = 59) для пробников с типом экзамена id = 61
+      if (groupId === 59) {
+        // Находим всех студентов, у которых есть экзамены с exam_type_id = 61
+        const studentIdsWithProbnik = new Set(
+          examsArray
+            .filter(exam => exam.exam_type_id === 61)
+            .map(exam => exam.id_student)
+        );
+        result = result.filter(s => studentIdsWithProbnik.has(s.id));
+      } else {
+        // Обычная группа - фильтруем по студентам в группе
+        const group = groupsArray.find(g => g.id === groupId);
+        if (group) {
+          const groupStudentIds = group.students?.map(s => s.id) || [];
+          result = result.filter(s => groupStudentIds.includes(s.id));
+        }
       }
     }
 
