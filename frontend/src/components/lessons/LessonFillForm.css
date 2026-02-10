@@ -1,0 +1,391 @@
+/* Container */
+.lesson-fill-form-container {
+  min-height: 100vh;
+  background: hsl(240 4.8% 95.9%);
+  padding: 16px;
+}
+
+@media (min-width: 768px) {
+  .lesson-fill-form-container {
+    padding: 24px;
+  }
+}
+
+/* Card */
+.lesson-fill-card {
+  max-width: 1280px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.lesson-fill-content {
+  padding: 16px;
+}
+
+@media (min-width: 768px) {
+  .lesson-fill-content {
+    padding: 24px;
+  }
+}
+
+/* Header */
+.lesson-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.lesson-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-icon {
+  padding: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon:hover {
+  background: hsl(240 4.8% 95.9%);
+}
+
+.icon-size {
+  width: 20px;
+  height: 20px;
+  color: hsl(240 5% 64.9%);
+}
+
+.lesson-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: hsl(240 10% 3.9%);
+}
+
+/* Settings */
+.settings-container {
+  position: relative;
+}
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.settings-dropdown {
+  position: absolute;
+  right: 0;
+  margin-top: 8px;
+  width: 288px;
+  background: white;
+  border: 1px solid hsl(240 5.9% 90%);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  z-index: 20;
+}
+
+.settings-dropdown-content {
+  padding: 16px;
+}
+
+.settings-dropdown-title {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(240 10% 3.9%);
+}
+
+/* Info Grid */
+.lesson-info-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 16px;
+  background: hsl(240 4.8% 95.9%);
+  border: 1px solid hsl(240 5.9% 90%);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+@media (min-width: 768px) {
+  .lesson-info-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.info-primary {
+  font-size: 14px;
+  color: hsl(240 10% 3.9%);
+  font-weight: 500;
+}
+
+.info-secondary {
+  font-size: 12px;
+  color: hsl(240 5% 64.9%);
+  margin-top: 4px;
+}
+
+.info-completed {
+  font-size: 12px;
+  color: hsl(142 76% 36%);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* Field Label */
+.field-label {
+  display: block;
+  font-size: 14px;
+  color: hsl(240 10% 3.9%);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+/* Inputs */
+.form-input-white,
+.form-input-gray,
+.form-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid hsl(240 5.9% 90%);
+  border-radius: 6px;
+  font-size: 14px;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.form-input-white {
+  background: white;
+}
+
+.form-input-gray {
+  background: hsl(240 4.8% 95.9%);
+}
+
+.form-input-white:focus,
+.form-input-gray:focus,
+.form-select:focus {
+  outline: none;
+  border-color: hsl(217 91% 60%);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-input-white:disabled,
+.form-input-gray:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: hsl(240 4.8% 95.9%);
+}
+
+/* Homework Field */
+.homework-field {
+  margin-bottom: 16px;
+}
+
+/* Attendance Table Section */
+.attendance-table-section {
+  margin-bottom: 16px;
+}
+
+.section-title {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: hsl(240 10% 3.9%);
+}
+
+/* Table */
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.attendance-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table-header-row {
+  border-bottom: 1px solid hsl(240 5.9% 90%);
+}
+
+.table-header-cell {
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  background: hsl(240 4.8% 95.9%);
+  color: hsl(240 10% 3.9%);
+}
+
+.table-header-cell.text-left {
+  text-align: left;
+}
+
+.table-header-cell.text-center {
+  text-align: center;
+}
+
+.table-header-cell.status-col {
+  width: 180px;
+}
+
+.table-header-cell.grade-col {
+  width: 96px;
+}
+
+.table-body-row {
+  border-bottom: 1px solid hsl(240 5.9% 90%);
+  transition: background-color 0.15s;
+}
+
+.table-body-row:hover {
+  background: hsl(240 4.8% 95.9%);
+}
+
+.table-body-cell {
+  padding: 10px 12px;
+  font-size: 14px;
+  color: hsl(240 10% 3.9%);
+}
+
+/* Status Select */
+.status-select-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-indicator {
+  width: 4px;
+  height: 24px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.status-select-input {
+  flex: 1;
+  padding: 6px 8px;
+  background: white;
+  border: 1px solid hsl(240 5.9% 90%);
+  border-radius: 6px;
+  font-size: 14px;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.status-select-input:focus {
+  outline: none;
+  border-color: hsl(217 91% 60%);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Grade Input */
+.grade-input-field {
+  width: 100%;
+  padding: 6px 8px;
+  background: hsl(240 4.8% 95.9%);
+  border: 1px solid hsl(240 5.9% 90%);
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: center;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.grade-input-field:focus {
+  outline: none;
+  border-color: hsl(217 91% 60%);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Comment Textarea */
+.comment-textarea-field {
+  width: 100%;
+  padding: 6px 8px;
+  background: hsl(240 4.8% 95.9%);
+  border: 1px solid hsl(240 5.9% 90%);
+  border-radius: 6px;
+  font-size: 14px;
+  resize: none;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.comment-textarea-field:focus {
+  outline: none;
+  border-color: hsl(217 91% 60%);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Actions */
+.lesson-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid hsl(240 5.9% 90%);
+}
+
+.btn {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: hsl(240 10% 3.9%);
+}
+
+.btn-secondary:hover {
+  background: hsl(240 4.8% 95.9%);
+}
+
+.btn-primary {
+  background: hsl(217 91% 60%);
+  color: white;
+  padding: 8px 24px;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: hsl(217 91% 50%);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Loading State */
+.loading-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: hsl(240 5% 64.9%);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .lesson-actions {
+    flex-direction: column;
+  }
+
+  .btn {
+    width: 100%;
+  }
+}

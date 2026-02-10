@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
+from collections import defaultdict
 from datetime import datetime
 import os
 
@@ -13,7 +14,7 @@ from database import get_db, create_tables
 import crud
 import schemas
 from schemas import GroupStudentsUpdate, GroupUpdate
-from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration, Probnik, ExamType, Subject, group_student_association, WorkSession, Task, Report
+from models import Base, Student, Exam, StudyGroup, Employee, ExamRegistration, Probnik, ExamType, Subject, group_student_association, WorkSession, Task, Report, Lesson, LessonAttendance
 
 from auth_routes import router as auth_router
 from auth import get_current_user, require_owner, require_owner_or_school_admin
@@ -21,6 +22,17 @@ from telegram_routes import router as telegram_router
 
 
 app = FastAPI(title="Student Exam System", version="1.0.0")
+
+def utc_iso(dt) -> str:
+    """Сериализует datetime в ISO-строку. Для naive datetime (без timezone) возвращает без суффикса Z."""
+    if dt is None:
+        return None
+    # Если datetime имеет timezone info, добавляем Z для UTC
+    if dt.tzinfo is not None and dt.utcoffset() is not None:
+        return dt.isoformat() + "Z"
+    # Для naive datetime возвращаем как есть (локальное время)
+    return dt.isoformat()
+
 
 def normalize_student_data(student):
     """Нормализует данные студента: преобразует пустые строки в None для user_id и class_num"""
@@ -401,7 +413,14 @@ async def create_group(group: schemas.GroupCreate, db: AsyncSession = Depends(ge
         # Делаем commit после создания группы
         await db.commit()
         await db.refresh(created_group)
-        
+
+        # Автогенерация уроков если есть расписание
+        if created_group.schedule:
+            from datetime import timedelta
+            now = datetime.utcnow()
+            end_date = now + timedelta(days=90)  # Генерируем уроки на 3 месяца
+            await crud.generate_lessons_for_group(db, created_group.id, now, end_date)
+
         # Перезагружаем с учителем - используем новый запрос в той же сессии
         result = await db.execute(
             select(StudyGroup)
@@ -539,9 +558,17 @@ async def update_group(
         if not teacher:
             raise HTTPException(status_code=404, detail="Учитель не найден")
     
+    # Проверяем, изменилось ли расписание
+    schedule_changed = hasattr(group_update, 'schedule') and group_update.schedule is not None
+
     group = await crud.update_group(db=db, group_id=group_id, group_update=group_update)
     if not group:
         raise HTTPException(status_code=404, detail="Группа не найдена")
+
+    # Регенерируем уроки если изменилось расписание
+    if schedule_changed:
+        await crud.regenerate_lessons_for_updated_schedule(db, group_id)
+
     return schemas.GroupResponse.from_orm_with_teacher(group)
 
 @app.put("/groups/{group_id}/students/")
@@ -1486,13 +1513,33 @@ async def get_active_work_session(
 
 # ==================== TASK ENDPOINTS ====================
 
+@app.get("/employees/assignable", response_model=List[schemas.EmployeeOut])
+async def get_assignable_employees(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Список сотрудников для назначения задачи.
+    Owner видит всех school_admin.
+    School_admin видит себя + других school_admin + owner/admin.
+    """
+    if user.get("role") in ["owner", "admin"]:
+        query = select(Employee).where(Employee.role == "school_admin")
+    else:
+        query = select(Employee).where(
+            Employee.role.in_(["owner", "admin", "school_admin"])
+        )
+    result = await db.execute(query)
+    employees = result.scalars().all()
+    return [schemas.EmployeeOut.model_validate(e) for e in employees]
+
+
 @app.post("/tasks/", response_model=schemas.TaskResponse)
 async def create_task(
     task: schemas.TaskCreate,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(require_owner)
+    user: dict = Depends(require_owner_or_school_admin)
 ):
-    """Создать задачу (только для owner)"""
+    """Создать задачу (owner или school_admin)"""
     # Получаем ID создателя
     username = user.get("username") or user.get("sub")
     result = await db.execute(select(Employee).where(Employee.username == username))
@@ -1512,19 +1559,22 @@ async def create_task(
         id=db_task.id,
         title=db_task.title,
         description=db_task.description,
-        deadline=db_task.deadline.isoformat() if db_task.deadline else None,
+        deadline=utc_iso(db_task.deadline),
+        deadline_type=db_task.deadline_type,
         status=db_task.status,
+        linked_students=db_task.linked_students or [],
         created_by_id=db_task.created_by_id,
         created_by_name=created_by.teacher_name if created_by else None,
         assigned_to_id=db_task.assigned_to_id,
         assigned_to_name=assigned_to.teacher_name if assigned_to else None,
-        created_at=db_task.created_at.isoformat(),
-        updated_at=db_task.updated_at.isoformat()
+        created_at=utc_iso(db_task.created_at),
+        updated_at=utc_iso(db_task.updated_at)
     )
 
 
 @app.get("/tasks/", response_model=List[schemas.TaskResponse])
 async def get_tasks(
+    report_date: Optional[str] = Query(None, description="YYYY-MM-DD — показать незавершённые + завершённые за этот день"),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(require_owner_or_school_admin)
 ):
@@ -1537,21 +1587,24 @@ async def get_tasks(
         if employee:
             employee_id = employee.id
 
-    tasks = await crud.get_tasks(db, employee_id)
+    tasks = await crud.get_tasks(db, employee_id, report_date=report_date)
 
     return [
         schemas.TaskResponse(
             id=t.id,
             title=t.title,
             description=t.description,
-            deadline=t.deadline.isoformat() if t.deadline else None,
+            deadline=utc_iso(t.deadline),
+            deadline_type=t.deadline_type,
             status=t.status,
+            linked_students=t.linked_students or [],
             created_by_id=t.created_by_id,
             created_by_name=t.created_by.teacher_name if t.created_by else None,
             assigned_to_id=t.assigned_to_id,
             assigned_to_name=t.assigned_to.teacher_name if t.assigned_to else None,
-            created_at=t.created_at.isoformat(),
-            updated_at=t.updated_at.isoformat()
+            created_at=utc_iso(t.created_at),
+            updated_at=utc_iso(t.updated_at),
+            completed_at=utc_iso(t.completed_at)
         )
         for t in tasks
     ]
@@ -1604,6 +1657,56 @@ async def update_task(
 
 # ==================== REPORT ENDPOINTS ====================
 
+def _compute_task_count(report, tasks_by_employee: dict) -> int:
+    """Считает задачи: активные если онлайн, закрытые за день если завершён."""
+    emp_tasks = tasks_by_employee.get(report.employee_id, [])
+    if report.work_end_time is None:
+        return sum(1 for t in emp_tasks if t.status not in ('completed',))
+    else:
+        report_date = report.report_date.date() if hasattr(report.report_date, 'date') else report.report_date
+        return sum(1 for t in emp_tasks if t.completed_at and t.completed_at.date() == report_date)
+
+
+@app.post("/reports/start", response_model=schemas.ReportResponse)
+async def start_report(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Начать рабочий день — создаёт или возвращает открытый отчёт"""
+    username = user.get("username") or user.get("sub")
+    result = await db.execute(select(Employee).where(Employee.username == username))
+    employee = result.scalar_one_or_none()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
+
+    db_report = await crud.start_report(db, employee.id)
+
+    tasks_q = await db.execute(select(Task).where(Task.assigned_to_id == employee.id))
+    tasks = tasks_q.scalars().all()
+    task_count = sum(1 for t in tasks if t.status not in ('completed',))
+
+    return schemas.ReportResponse(
+        id=db_report.id,
+        employee_id=db_report.employee_id,
+        employee_name=employee.teacher_name,
+        report_date=db_report.report_date.strftime("%Y-%m-%d") if hasattr(db_report.report_date, 'strftime') else str(db_report.report_date),
+        created_at=utc_iso(db_report.created_at),
+        work_start_time=utc_iso(db_report.work_start_time),
+        work_end_time=None,
+        leads=None,
+        trial_scheduled=0,
+        trial_attended=0,
+        notified_tomorrow="",
+        cancellations="",
+        churn="",
+        money=None,
+        water="",
+        supplies_needed="",
+        comments="",
+        task_count=task_count
+    )
+
+
 @app.post("/reports/", response_model=schemas.ReportResponse)
 async def create_report(
     report: schemas.ReportCreate,
@@ -1621,13 +1724,28 @@ async def create_report(
 
     db_report = await crud.create_report(db, report.dict(), employee.id)
 
+    # Парсим JSON поля обратно в Pydantic модели
+    leads_data = schemas.LeadsData(**db_report.leads) if db_report.leads else None
+    money_data = schemas.MoneyData(**db_report.money) if db_report.money else None
+
     return schemas.ReportResponse(
         id=db_report.id,
         employee_id=db_report.employee_id,
         employee_name=employee.teacher_name,
         report_date=db_report.report_date.strftime("%Y-%m-%d"),
-        content=db_report.content,
-        created_at=db_report.created_at.isoformat()
+        created_at=utc_iso(db_report.created_at),
+        work_start_time=utc_iso(db_report.work_start_time),
+        work_end_time=utc_iso(db_report.work_end_time),
+        leads=leads_data,
+        trial_scheduled=db_report.trial_scheduled,
+        trial_attended=db_report.trial_attended,
+        notified_tomorrow=db_report.notified_tomorrow or "",
+        cancellations=db_report.cancellations or "",
+        churn=db_report.churn or "",
+        money=money_data,
+        water=db_report.water or "",
+        supplies_needed=db_report.supplies_needed or "",
+        comments=db_report.comments or ""
     )
 
 
@@ -1647,17 +1765,428 @@ async def get_reports(
 
     reports = await crud.get_reports(db, employee_id)
 
-    return [
-        schemas.ReportResponse(
+    # Загружаем задачи для подсчёта
+    emp_ids = list({r.employee_id for r in reports})
+    tasks_by_emp = defaultdict(list)
+    if emp_ids:
+        tq = await db.execute(select(Task).where(Task.assigned_to_id.in_(emp_ids)))
+        for t in tq.scalars().all():
+            tasks_by_emp[t.assigned_to_id].append(t)
+
+    result_list = []
+    for r in reports:
+        leads_data = schemas.LeadsData(**r.leads) if r.leads else None
+        money_data = schemas.MoneyData(**r.money) if r.money else None
+
+        result_list.append(schemas.ReportResponse(
             id=r.id,
             employee_id=r.employee_id,
             employee_name=r.employee.teacher_name if r.employee else None,
             report_date=r.report_date.strftime("%Y-%m-%d"),
-            content=r.content,
-            created_at=r.created_at.isoformat()
-        )
-        for r in reports
+            created_at=utc_iso(r.created_at),
+            work_start_time=utc_iso(r.work_start_time),
+            work_end_time=utc_iso(r.work_end_time),
+            leads=leads_data,
+            trial_scheduled=r.trial_scheduled or 0,
+            trial_attended=r.trial_attended or 0,
+            notified_tomorrow=r.notified_tomorrow or "",
+            cancellations=r.cancellations or "",
+            churn=r.churn or "",
+            money=money_data,
+            water=r.water or "",
+            supplies_needed=r.supplies_needed or "",
+            comments=r.comments or "",
+            task_count=_compute_task_count(r, tasks_by_emp)
+        ))
+
+    return result_list
+
+
+@app.put("/reports/{report_id}", response_model=schemas.ReportResponse)
+async def update_report(
+    report_id: int,
+    report: schemas.ReportUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Обновить отчет (owner — любой, school_admin — только свой)"""
+    # school_admin может менять только свой отчёт
+    if user.get("role") == "school_admin":
+        username = user.get("username") or user.get("sub")
+        emp_r = await db.execute(select(Employee).where(Employee.username == username))
+        me = emp_r.scalar_one_or_none()
+        check = await db.execute(select(Report).where(Report.id == report_id))
+        existing = check.scalar_one_or_none()
+        if not existing or not me or existing.employee_id != me.id:
+            raise HTTPException(status_code=403, detail="Нет доступа к этому отчёту")
+
+    db_report = await crud.update_report(db, report_id, report.dict(exclude_none=True))
+    if not db_report:
+        raise HTTPException(status_code=404, detail="Отчет не найден")
+
+    result = await db.execute(select(Employee).where(Employee.id == db_report.employee_id))
+    employee = result.scalar_one_or_none()
+    leads_data = schemas.LeadsData(**db_report.leads) if db_report.leads else None
+    money_data = schemas.MoneyData(**db_report.money) if db_report.money else None
+
+    tq = await db.execute(select(Task).where(Task.assigned_to_id == db_report.employee_id))
+    tasks = {db_report.employee_id: tq.scalars().all()}
+    task_count = _compute_task_count(db_report, tasks)
+
+    return schemas.ReportResponse(
+        id=db_report.id,
+        employee_id=db_report.employee_id,
+        employee_name=employee.teacher_name if employee else None,
+        report_date=db_report.report_date.strftime("%Y-%m-%d"),
+        created_at=utc_iso(db_report.created_at),
+        work_start_time=utc_iso(db_report.work_start_time),
+        work_end_time=utc_iso(db_report.work_end_time),
+        leads=leads_data,
+        trial_scheduled=db_report.trial_scheduled or 0,
+        trial_attended=db_report.trial_attended or 0,
+        notified_tomorrow=db_report.notified_tomorrow or "",
+        cancellations=db_report.cancellations or "",
+        churn=db_report.churn or "",
+        money=money_data,
+        water=db_report.water or "",
+        supplies_needed=db_report.supplies_needed or "",
+        comments=db_report.comments or "",
+        task_count=task_count
+    )
+
+
+@app.delete("/reports/{report_id}", status_code=204)
+async def delete_report(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner)
+):
+    """Удалить отчет (только owner)"""
+    deleted = await crud.delete_report(db, report_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Отчет не найден")
+
+
+# ==================== LESSON ENDPOINTS ====================
+
+async def get_employee_id_from_user(db: AsyncSession, user: dict) -> int:
+    """Получить employee_id из объекта user"""
+    username = user.get("username") or user.get("sub")
+    result = await db.execute(select(Employee).where(Employee.username == username))
+    employee = result.scalar_one_or_none()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
+    return employee.id
+
+@app.get("/lessons/my")
+async def get_my_lessons(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Получить уроки текущего пользователя (учителя, администратора школы или владельца)"""
+    employee_id = await get_employee_id_from_user(db, user)
+    employee = await crud.get_employee(db, employee_id)
+
+    start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00")) if start_date else None
+    end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00")) if end_date else None
+
+    # Получаем уроки в зависимости от роли
+    if user["role"] == "owner":
+        lessons = await crud.get_all_lessons(db, start_dt, end_dt)
+    elif user["role"] == "school_admin":
+        lessons = await crud.get_lessons_by_school(db, employee.school, start_dt, end_dt)
+    elif user["role"] == "teacher":
+        lessons = await crud.get_lessons_by_teacher(db, employee_id, start_dt, end_dt)
+    else:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+
+    return [
+        {
+            "id": lesson.id,
+            "group_id": lesson.group_id,
+            "group_name": lesson.group.name if lesson.group else None,
+            "lesson_date": utc_iso(lesson.lesson_date),
+            "duration_minutes": lesson.duration_minutes,
+            "topic": lesson.topic,
+            "homework": lesson.homework,
+            "grading_mode": lesson.grading_mode,
+            "total_tasks": lesson.total_tasks,
+            "homework_total_tasks": lesson.homework_total_tasks,
+            "auto_generated": lesson.auto_generated,
+            "is_cancelled": lesson.is_cancelled,
+            "is_completed": lesson.is_completed,
+            "completed_at": utc_iso(lesson.completed_at),
+            "completed_by_id": lesson.completed_by_id,
+            "completed_by_name": lesson.completed_by.teacher_name if lesson.completed_by else None,
+            "created_at": utc_iso(lesson.created_at),
+            "updated_at": utc_iso(lesson.updated_at),
+            "attendances_count": len(lesson.attendances) if lesson.attendances else 0
+        }
+        for lesson in lessons
     ]
+
+
+@app.get("/lessons/{lesson_id}")
+async def get_lesson_detail(
+    lesson_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Получить детальную информацию об уроке с посещаемостью"""
+    lesson = await crud.get_lesson(db, lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Урок не найден")
+
+    # Проверка доступа
+    employee_id = await get_employee_id_from_user(db, user)
+    employee = await crud.get_employee(db, employee_id)
+
+    if user["role"] == "teacher":
+        if lesson.group.teacher_id != employee_id:
+            raise HTTPException(status_code=403, detail="Нет доступа к этому уроку")
+    elif user["role"] == "school_admin":
+        if lesson.group.school != employee.school:
+            raise HTTPException(status_code=403, detail="Нет доступа к этому уроку")
+
+    return {
+        "id": lesson.id,
+        "group_id": lesson.group_id,
+        "group_name": lesson.group.name if lesson.group else None,
+        "lesson_date": utc_iso(lesson.lesson_date),
+        "duration_minutes": lesson.duration_minutes,
+        "topic": lesson.topic,
+        "homework": lesson.homework,
+        "grading_mode": lesson.grading_mode,
+        "total_tasks": lesson.total_tasks,
+        "homework_total_tasks": lesson.homework_total_tasks,
+        "auto_generated": lesson.auto_generated,
+        "is_cancelled": lesson.is_cancelled,
+        "cancellation_reason": lesson.cancellation_reason,
+        "is_completed": lesson.is_completed,
+        "completed_at": utc_iso(lesson.completed_at),
+        "completed_by_id": lesson.completed_by_id,
+        "completed_by_name": lesson.completed_by.teacher_name if lesson.completed_by else None,
+        "created_at": utc_iso(lesson.created_at),
+        "updated_at": utc_iso(lesson.updated_at),
+        "students": [
+            {
+                "id": student.id,
+                "fio": student.fio,
+                "phone": student.phone
+            }
+            for student in lesson.group.students
+        ] if lesson.group and lesson.group.students else [],
+        "attendances": [
+            {
+                "id": att.id,
+                "student_id": att.student_id,
+                "student_fio": att.student.fio if att.student else None,
+                "attendance_status": att.attendance_status,
+                "grade_value": att.grade_value,
+                "homework_grade_value": att.homework_grade_value,
+                "comment": att.comment
+            }
+            for att in lesson.attendances
+        ] if lesson.attendances else []
+    }
+
+
+@app.post("/lessons/")
+async def create_lesson(
+    lesson: schemas.LessonCreate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Создать урок вручную"""
+    if user["role"] not in ["teacher", "owner"]:
+        raise HTTPException(status_code=403, detail="Доступ только для учителей")
+
+    employee_id = await get_employee_id_from_user(db, user)
+
+    lesson_data = lesson.dict()
+    created_lesson = await crud.create_lesson(db, lesson_data, employee_id)
+
+    return {
+        "id": created_lesson.id,
+        "group_id": created_lesson.group_id,
+        "lesson_date": utc_iso(created_lesson.lesson_date),
+        "duration_minutes": created_lesson.duration_minutes,
+        "topic": created_lesson.topic,
+        "homework": created_lesson.homework,
+        "grading_mode": created_lesson.grading_mode,
+        "total_tasks": created_lesson.total_tasks,
+        "homework_total_tasks": created_lesson.homework_total_tasks,
+        "auto_generated": created_lesson.auto_generated,
+        "created_at": utc_iso(created_lesson.created_at)
+    }
+
+
+@app.put("/lessons/{lesson_id}")
+async def update_lesson(
+    lesson_id: int,
+    lesson: schemas.LessonUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Обновить урок"""
+    if user["role"] not in ["teacher", "owner"]:
+        raise HTTPException(status_code=403, detail="Доступ только для учителей")
+
+    # Проверка доступа
+    existing_lesson = await crud.get_lesson(db, lesson_id)
+    if not existing_lesson:
+        raise HTTPException(status_code=404, detail="Урок не найден")
+
+    if user["role"] == "teacher":
+        employee_id = await get_employee_id_from_user(db, user)
+        if existing_lesson.group.teacher_id != employee_id:
+            raise HTTPException(status_code=403, detail="Нет доступа к этому уроку")
+
+    updated_lesson = await crud.update_lesson(db, lesson_id, lesson.dict(exclude_unset=True))
+
+    return {
+        "id": updated_lesson.id,
+        "lesson_date": utc_iso(updated_lesson.lesson_date),
+        "duration_minutes": updated_lesson.duration_minutes,
+        "topic": updated_lesson.topic,
+        "grading_mode": updated_lesson.grading_mode,
+        "total_tasks": updated_lesson.total_tasks,
+        "homework_total_tasks": updated_lesson.homework_total_tasks,
+        "updated_at": utc_iso(updated_lesson.updated_at)
+    }
+
+
+@app.post("/lessons/{lesson_id}/cancel")
+async def cancel_lesson(
+    lesson_id: int,
+    reason: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Отменить урок"""
+    if user["role"] not in ["teacher", "owner"]:
+        raise HTTPException(status_code=403, detail="Доступ только для учителей")
+
+    # Проверка доступа
+    existing_lesson = await crud.get_lesson(db, lesson_id)
+    if not existing_lesson:
+        raise HTTPException(status_code=404, detail="Урок не найден")
+
+    if user["role"] == "teacher":
+        employee_id = await get_employee_id_from_user(db, user)
+        if existing_lesson.group.teacher_id != employee_id:
+            raise HTTPException(status_code=403, detail="Нет доступа к этому уроку")
+
+    cancelled_lesson = await crud.cancel_lesson(db, lesson_id, reason)
+
+    return {
+        "id": cancelled_lesson.id,
+        "is_cancelled": cancelled_lesson.is_cancelled,
+        "cancellation_reason": cancelled_lesson.cancellation_reason,
+        "updated_at": utc_iso(cancelled_lesson.updated_at)
+    }
+
+
+@app.delete("/lessons/{lesson_id}", status_code=204)
+async def delete_lesson(
+    lesson_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Удалить урок"""
+    if user["role"] not in ["teacher", "owner"]:
+        raise HTTPException(status_code=403, detail="Доступ только для учителей")
+
+    # Проверка доступа
+    existing_lesson = await crud.get_lesson(db, lesson_id)
+    if not existing_lesson:
+        raise HTTPException(status_code=404, detail="Урок не найден")
+
+    if user["role"] == "teacher":
+        employee_id = await get_employee_id_from_user(db, user)
+        if existing_lesson.group.teacher_id != employee_id:
+            raise HTTPException(status_code=403, detail="Нет доступа к этому уроку")
+
+    deleted = await crud.delete_lesson(db, lesson_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Урок не найден")
+
+
+@app.post("/lessons/{lesson_id}/fill")
+async def fill_lesson(
+    lesson_id: int,
+    fill_data: schemas.LessonFillData,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user)
+):
+    """Заполнить посещаемость урока"""
+    if user["role"] not in ["teacher", "owner", "school_admin"]:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+
+    # Проверка доступа
+    existing_lesson = await crud.get_lesson(db, lesson_id)
+    if not existing_lesson:
+        raise HTTPException(status_code=404, detail="Урок не найден")
+
+    employee_id = await get_employee_id_from_user(db, user)
+    employee = await crud.get_employee(db, employee_id)
+
+    if user["role"] == "teacher":
+        if existing_lesson.group.teacher_id != employee_id:
+            raise HTTPException(status_code=403, detail="Нет доступа к этому уроку")
+    elif user["role"] == "school_admin":
+        if existing_lesson.group.school != employee.school:
+            raise HTTPException(status_code=403, detail="Нет доступа к этому уроку")
+
+    attendances_list = [att.dict() for att in fill_data.attendances]
+    filled_lesson = await crud.fill_lesson(db, lesson_id, attendances_list, completed_by_id=employee_id)
+
+    return {
+        "id": filled_lesson.id,
+        "is_completed": filled_lesson.is_completed,
+        "completed_at": utc_iso(filled_lesson.completed_at),
+        "attendances": [
+            {
+                "id": att.id,
+                "student_id": att.student_id,
+                "attendance_status": att.attendance_status,
+                "grade_value": att.grade_value,
+                "homework_grade_value": att.homework_grade_value,
+                "comment": att.comment
+            }
+            for att in filled_lesson.attendances
+        ]
+    }
+
+
+@app.post("/lessons/generate/{group_id}")
+async def generate_lessons(
+    group_id: int,
+    months: int = 3,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(require_owner_or_school_admin)
+):
+    """Сгенерировать уроки для группы на N месяцев вперед"""
+    from datetime import timedelta
+
+    start_date = datetime.utcnow()
+    end_date = start_date + timedelta(days=months * 30)
+
+    created_lessons = await crud.generate_lessons_for_group(db, group_id, start_date, end_date)
+
+    return {
+        "created_count": len(created_lessons),
+        "lessons": [
+            {
+                "id": lesson.id,
+                "lesson_date": utc_iso(lesson.lesson_date),
+                "duration_minutes": lesson.duration_minutes
+            }
+            for lesson in created_lessons
+        ]
+    }
 
 
 # ==================== EMPLOYEE ENDPOINTS ====================

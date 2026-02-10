@@ -1,0 +1,468 @@
+/* Lessons Tab - shadcn/ui style */
+.lessons-tab {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header */
+.lessons-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.lessons-header h2 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  color: hsl(240 10% 3.9%);
+  letter-spacing: -0.025em;
+}
+
+/* Tabs */
+.lessons-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid hsl(240 5.9% 90%);
+}
+
+.tab-btn {
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: hsl(240 5% 64.9%);
+  transition: all 0.2s;
+  position: relative;
+  bottom: -1px;
+}
+
+.tab-btn:hover {
+  color: hsl(240 10% 3.9%);
+  background: hsl(240 4.8% 95.9%);
+  border-radius: 6px 6px 0 0;
+}
+
+.tab-btn.active {
+  color: hsl(240 10% 3.9%);
+  border-bottom-color: hsl(240 10% 3.9%);
+}
+
+/* Table Container */
+.table-container {
+  background: white;
+  border: 1px solid hsl(240 5.9% 90%);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  background: white;
+  border: 1px solid hsl(240 5.9% 90%);
+  border-radius: 8px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: hsl(240 10% 3.9%);
+}
+
+.text-muted {
+  color: hsl(240 3.8% 46.1%);
+  font-size: 14px;
+}
+
+/* Group Cell */
+.group-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-name {
+  font-weight: 500;
+}
+
+/* Action Buttons */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Badge Styles */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge-default {
+  background: hsl(240 4.8% 95.9%);
+  color: hsl(240 5.9% 10%);
+}
+
+.badge-secondary {
+  background: hsl(240 4.8% 95.9%);
+  color: hsl(240 5.9% 10%);
+}
+
+.badge-success {
+  background: hsl(142 76% 36% / 0.1);
+  color: hsl(142 76% 36%);
+}
+
+.badge-warning {
+  background: hsl(38 92% 50% / 0.1);
+  color: hsl(32 95% 44%);
+}
+
+.badge-destructive {
+  background: hsl(0 84% 60% / 0.1);
+  color: hsl(0 84% 60%);
+}
+
+/* Button Styles */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  cursor: pointer;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn-primary {
+  background: hsl(240 10% 3.9%);
+  color: white;
+  border: none;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: hsl(240 10% 3.9% / 0.9);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: hsl(240 10% 3.9%);
+}
+
+.btn-ghost:hover {
+  background: hsl(240 4.8% 95.9%);
+}
+
+.btn-destructive {
+  background: hsl(0 84% 60%);
+  color: white;
+  border: none;
+}
+
+.btn-destructive:hover {
+  background: hsl(0 84% 60% / 0.9);
+}
+
+.btn-back {
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+/* Lesson Fill Form */
+.lesson-fill-form {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.form-header {
+  margin-bottom: 24px;
+}
+
+.form-header h2 {
+  margin: 16px 0 0 0;
+  font-size: 30px;
+  font-weight: 700;
+  color: hsl(240 10% 3.9%);
+}
+
+/* Main Card - объединяет все секции */
+.lesson-main-card {
+  background: white;
+  border: 1px solid hsl(240 5.9% 90%);
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+/* Info Section */
+.lesson-info-section {
+  padding-bottom: 24px;
+  border-bottom: 1px solid hsl(240 5.9% 90%);
+  margin-bottom: 24px;
+}
+
+.lesson-info-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: hsl(240 10% 3.9%);
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.info-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-field label {
+  font-size: 14px;
+  font-weight: 500;
+  color: hsl(240 5% 64.9%);
+}
+
+.info-value-display {
+  padding: 10px 12px;
+  background: hsl(240 4.8% 95.9%);
+  border-radius: 6px;
+  font-size: 14px;
+  color: hsl(240 10% 3.9%);
+}
+
+/* Lesson Details Section */
+.lesson-details-section {
+  padding-bottom: 24px;
+  border-bottom: 1px solid hsl(240 5.9% 90%);
+  margin-bottom: 24px;
+}
+
+.lesson-details-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: hsl(240 10% 3.9%);
+}
+
+/* Attendance Section */
+.attendance-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: hsl(240 10% 3.9%);
+}
+
+/* Form Elements */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 14px;
+  font-weight: 500;
+  color: hsl(240 10% 3.9%);
+}
+
+.form-input {
+  padding: 10px 12px;
+  border: 1px solid hsl(240 5.9% 90%);
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: hsl(240 10% 3.9%);
+  ring: 2px;
+  ring-color: hsl(240 10% 3.9% / 0.1);
+}
+
+.form-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: hsl(240 4.8% 95.9%);
+}
+
+.grade-input {
+  width: 80px;
+}
+
+.comment-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.status-select {
+  width: 100%;
+  min-width: 200px;
+}
+
+/* Form Actions */
+.form-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 20px;
+  background: white;
+  border: 1px solid hsl(240 5.9% 90%);
+  border-radius: 8px;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-sm {
+  max-width: 500px;
+}
+
+.modal-header {
+  padding: 24px 24px 16px 24px;
+  border-bottom: 1px solid hsl(240 5.9% 90%);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: hsl(240 10% 3.9%);
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid hsl(240 5.9% 90%);
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.lesson-info-box {
+  padding: 16px;
+  background: hsl(240 4.8% 95.9%);
+  border-radius: 8px;
+  margin: 16px 0;
+}
+
+.lesson-info-box p {
+  margin: 4px 0;
+}
+
+/* Loading State */
+.lessons-loading,
+.loading-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: hsl(240 3.8% 46.1%);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .lessons-tab,
+  .lesson-fill-form {
+    padding: 16px;
+  }
+
+  .lessons-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .action-buttons .btn {
+    width: 100%;
+  }
+
+  .form-actions {
+    flex-direction: column;
+  }
+
+  .form-actions .btn {
+    width: 100%;
+  }
+
+  .grade-input {
+    width: 100%;
+  }
+
+  .status-select {
+    min-width: 100%;
+  }
+}

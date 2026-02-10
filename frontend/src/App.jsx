@@ -13,9 +13,8 @@ import RegistrationsTab from './components/registrations/RegistrationsView';
 import ProbnikTab from './components/probnik/ProbnikManager';
 import TeachersTab from './components/teachers/TeacherList';
 import SubjectsTab from './components/subjects/SubjectManager';
-import TimeTrackerTab from './components/timetracker/TimeTrackerTab';
-import TasksTab from './components/tasks/TasksTab';
 import ReportsTab from './components/reports/ReportsTab';
+import LessonsTab from './components/lessons/LessonsTab';
 import Notification from './components/common/Notification';
 import Login from "./pages/Login";
 import PublicResults from "./pages/PublicResults";
@@ -27,13 +26,12 @@ const allTabs = [
   { id: 'teachers', label: 'Сотрудники', ownerOnly: true },
   { id: 'students', label: 'Студенты', roles: ['owner', 'admin', 'school_admin'] },
   { id: 'exams', label: 'Экзамены', roles: ['owner', 'admin', 'teacher'] },
+  { id: 'lessons', label: 'Уроки', roles: ['owner', 'teacher', 'school_admin'] },
   { id: 'results', label: 'Результаты', roles: ['owner', 'admin', 'school_admin'] },
   { id: 'groups', label: 'Группы', roles: ['owner', 'admin', 'teacher', 'school_admin'] },
   { id: 'registrations', label: 'Записи на экзамен', roles: ['owner', 'admin', 'teacher', 'school_admin'] },
   { id: 'probnik', label: 'Пробник', ownerOnly: true },
   { id: 'subjects', label: 'Предметы', ownerOnly: true },
-  { id: 'time_tracker', label: 'Рабочее время', roles: ['owner', 'school_admin'] },
-  { id: 'tasks', label: 'Задачи', roles: ['owner', 'school_admin'] },
   { id: 'reports', label: 'Отчеты', roles: ['owner', 'school_admin'] }
 ];
 
@@ -135,12 +133,10 @@ function App() {
         return <ProbnikTab showNotification={stableShowNotification} />;
       case 'subjects':
         return <SubjectsTab showNotification={stableShowNotification} />;
-      case 'time_tracker':
-        return <TimeTrackerTab showNotification={stableShowNotification} userRole={userRole} />;
-      case 'tasks':
-        return <TasksTab showNotification={stableShowNotification} userRole={userRole} />;
       case 'reports':
         return <ReportsTab showNotification={stableShowNotification} userRole={userRole} />;
+      case 'lessons':
+        return <LessonsTab showNotification={stableShowNotification} />;
       default:
         return null;
     }
@@ -148,10 +144,18 @@ function App() {
 
   // Функция выхода (мемоизируем, чтобы не вызывать перерендеры)
   const logout = useCallback(() => {
+    // Очищаем пользовательские данные сессии отчётов
+    const userId = localStorage.getItem('employee_id') || localStorage.getItem('teacher_name');
+    if (userId) {
+      ['workStartTime', 'reportFormData', 'savedReportTabs', 'lastSavedFormData'].forEach(key => {
+        localStorage.removeItem(`${key}_${userId}`);
+      });
+    }
     localStorage.removeItem("token");
     localStorage.removeItem("role");
     localStorage.removeItem("teacher_name");
     localStorage.removeItem("school");
+    localStorage.removeItem("employee_id");
     window.location.reload();
   }, []);
 

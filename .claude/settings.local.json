@@ -11,7 +11,13 @@
       "Bash(python import_subjects.py:*)",
       "Bash(python:*)",
       "Bash(alembic current:*)",
-      "Bash(alembic history:*)"
+      "Bash(alembic history:*)",
+      "WebFetch(domain:figma.com)",
+      "WebFetch(domain:www.figma.com)",
+      "Bash(npm run dev:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(cmd.exe /c \"cd C:\\\\Users\\\\vadiq\\\\OneDrive\\\\Desktop\\\\DEV_MODE\\\\exams_g\\\\frontend && npm install lucide-react\")"
     ]
   }
 }

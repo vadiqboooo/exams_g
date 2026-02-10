@@ -36,7 +36,8 @@ async def login(username: str, password: str, db: AsyncSession = Depends(get_db)
         access_token=token,
         role=user.role,
         teacher_name=user.teacher_name,
-        school=user.school
+        school=user.school,
+        employee_id=user.id
     )
 
 

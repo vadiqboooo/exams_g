@@ -12,7 +12,7 @@ export default function TasksTab({ showNotification, userRole }) {
   const [isLoading, setIsLoading] = useState(false);
 
   const token = localStorage.getItem('token');
-  const isOwner = userRole === 'owner' || userRole === 'admin';
+  const isOwner = userRole === 'owner' || userRole === 'admin' || userRole === 'school_admin';
 
   useEffect(() => {
     fetchTasks();

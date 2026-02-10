@@ -383,6 +383,7 @@ class LoginResponse(BaseModel):
     role: str
     teacher_name: str
     school: Optional[str] = None
+    employee_id: int
 
 # ==== СХЕМЫ ДЛЯ ТЕЛЕГРАМ-БОТА ====
 
@@ -600,12 +601,20 @@ class WorkSessionResponse(BaseModel):
 
 # ==== СХЕМЫ ДЛЯ ЗАДАЧ ====
 
+class LinkedStudent(BaseModel):
+    id: int
+    fio: str
+    phone: Optional[str] = None
+
+
 class TaskCreate(BaseModel):
     """Создание задачи"""
     title: str
     description: Optional[str] = None
-    deadline: Optional[str] = None  # Формат: "YYYY-MM-DDTHH:MM:SS"
+    deadline: Optional[str] = None
+    deadline_type: Optional[str] = None  # urgent, today, tomorrow, custom
     assigned_to_id: int
+    linked_students: Optional[List[LinkedStudent]] = None
 
 class TaskUpdate(BaseModel):
     """Обновление задачи"""
@@ -627,13 +636,16 @@ class TaskResponse(BaseModel):
     title: str
     description: Optional[str] = None
     deadline: Optional[str] = None
+    deadline_type: Optional[str] = None
     status: str
+    linked_students: Optional[List[LinkedStudent]] = None
     created_by_id: int
-    created_by_name: Optional[str] = None  # Имя создателя
+    created_by_name: Optional[str] = None
     assigned_to_id: int
-    assigned_to_name: Optional[str] = None  # Имя исполнителя
+    assigned_to_name: Optional[str] = None
     created_at: str
     updated_at: str
+    completed_at: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -641,18 +653,178 @@ class TaskResponse(BaseModel):
 
 # ==== СХЕМЫ ДЛЯ ОТЧЕТОВ ====
 
+class LeadsData(BaseModel):
+    """Данные о лидах"""
+    calls: int = 0
+    social: int = 0
+    website: int = 0
+
+class MoneyData(BaseModel):
+    """Данные о деньгах"""
+    cash: int = 0
+    mobile_bank: int = 0
+    non_cash: int = 0
+
+class ReportUpdate(BaseModel):
+    """Обновление отчета (все поля опциональны)"""
+    report_date: Optional[str] = None
+    work_start_time: Optional[str] = None
+    work_end_time: Optional[str] = None
+    leads: Optional[LeadsData] = None
+    trial_scheduled: Optional[int] = None
+    trial_attended: Optional[int] = None
+    notified_tomorrow: Optional[str] = None
+    cancellations: Optional[str] = None
+    churn: Optional[str] = None
+    money: Optional[MoneyData] = None
+    water: Optional[str] = None
+    supplies_needed: Optional[str] = None
+    comments: Optional[str] = None
+
+
 class ReportCreate(BaseModel):
     """Создание отчета"""
     report_date: str  # Формат: "YYYY-MM-DD"
-    content: str
+    work_start_time: Optional[str] = None  # ISO строка
+    work_end_time: Optional[str] = None    # ISO строка
+
+    # Лиды
+    leads: Optional[LeadsData] = None
+
+    # Пробные занятия
+    trial_scheduled: int = 0
+    trial_attended: int = 0
+    notified_tomorrow: str = ""  # да/нет
+
+    # Переносы и отмены
+    cancellations: str = ""
+
+    # Отток
+    churn: str = ""
+
+    # Деньги
+    money: Optional[MoneyData] = None
+
+    # Хозяйственные вопросы
+    water: str = ""
+    supplies_needed: str = ""
+
+    # Комментарии
+    comments: str = ""
 
 class ReportResponse(BaseModel):
     id: int
     employee_id: int
-    employee_name: Optional[str] = None  # Имя сотрудника
+    employee_name: Optional[str] = None
     report_date: str
-    content: str
     created_at: str
+    work_start_time: Optional[str] = None
+    work_end_time: Optional[str] = None
+    task_count: int = 0  # Активных задач (если онлайн) или закрытых за день (если завершён)
+
+    # Структурированные данные
+    leads: Optional[LeadsData] = None
+    trial_scheduled: int = 0
+    trial_attended: int = 0
+    notified_tomorrow: str = ""
+    cancellations: str = ""
+    churn: str = ""
+    money: Optional[MoneyData] = None
+    water: str = ""
+    supplies_needed: str = ""
+    comments: str = ""
+
+    class Config:
+        from_attributes = True
+
+
+# ==== СХЕМЫ ДЛЯ УРОКОВ ====
+
+class AttendanceData(BaseModel):
+    """Данные посещаемости одного студента на уроке"""
+    student_id: int
+    attendance_status: str = "present"  # present, trial, trial_absent, excused, absent
+    grade_value: Optional[int] = None
+    homework_grade_value: Optional[int] = None
+    comment: Optional[str] = None
+
+
+class AttendanceResponse(BaseModel):
+    """Ответ с информацией о посещаемости студента"""
+    id: int
+    student_id: int
+    student_fio: Optional[str] = None
+    attendance_status: str
+    grade_value: Optional[int] = None
+    homework_grade_value: Optional[int] = None
+    comment: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LessonBase(BaseModel):
+    """Базовые поля урока"""
+    group_id: int
+    lesson_date: str  # ISO datetime
+    duration_minutes: int = 90
+    topic: Optional[str] = None
+    homework: Optional[str] = None
+    grading_mode: str = "numeric"  # numeric или tasks
+    total_tasks: Optional[int] = None
+    homework_total_tasks: Optional[int] = None
+
+
+class LessonCreate(LessonBase):
+    """Создание урока"""
+    auto_generated: bool = False
+
+
+class LessonUpdate(BaseModel):
+    """Обновление урока"""
+    lesson_date: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    topic: Optional[str] = None
+    homework: Optional[str] = None
+    grading_mode: Optional[str] = None
+    total_tasks: Optional[int] = None
+    homework_total_tasks: Optional[int] = None
+
+
+class LessonResponse(BaseModel):
+    """Ответ с информацией об уроке"""
+    id: int
+    group_id: int
+    group_name: Optional[str] = None
+    lesson_date: str
+    duration_minutes: int
+    topic: Optional[str] = None
+    homework: Optional[str] = None
+    grading_mode: str
+    total_tasks: Optional[int] = None
+    homework_total_tasks: Optional[int] = None
+    auto_generated: bool
+    is_cancelled: bool
+    cancellation_reason: Optional[str] = None
+    is_completed: bool
+    completed_at: Optional[str] = None
+    completed_by_id: Optional[int] = None
+    completed_by_name: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class LessonFillData(BaseModel):
+    """Данные для заполнения урока (посещаемость всех студентов)"""
+    attendances: List[AttendanceData]
+
+
+class LessonDetailResponse(LessonResponse):
+    """Детальный ответ об уроке с посещаемостью"""
+    attendances: List[AttendanceResponse] = []
 
     class Config:
         from_attributes = True

@@ -37,6 +37,7 @@ export default function Login({ showNotification }) {
       localStorage.setItem("token", resp.data.access_token);
       localStorage.setItem("role", resp.data.role);
       localStorage.setItem("teacher_name", resp.data.teacher_name);
+      localStorage.setItem("employee_id", resp.data.employee_id);
       if (resp.data.school) {
         localStorage.setItem("school", resp.data.school);
       }

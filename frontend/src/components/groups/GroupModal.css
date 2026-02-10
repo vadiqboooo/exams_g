@@ -1,0 +1,250 @@
+/* Backdrop */
+.group-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Container */
+.group-modal-container {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+  width: 100%;
+  max-width: 32rem;
+  max-height: 90vh;
+  animation: zoomIn 0.2s ease-out;
+  padding: 0 16px;
+}
+
+/* Content */
+.group-modal-content {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Custom scrollbar */
+.group-modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.group-modal-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.group-modal-content::-webkit-scrollbar-thumb {
+  background: hsl(240 5% 84%);
+  border-radius: 4px;
+}
+
+.group-modal-content::-webkit-scrollbar-thumb:hover {
+  background: hsl(240 5% 74%);
+}
+
+/* Header */
+.group-modal-header {
+  padding: 16px;
+  border-bottom: 1px solid hsl(240 5.9% 90%);
+}
+
+/* Title row - название и крестик */
+.group-modal-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.group-modal-title-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.group-modal-title {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: hsl(240 10% 3.9%);
+  line-height: 1.4;
+}
+
+/* Meta row - учитель и школа в одну строку */
+.group-modal-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.group-modal-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: hsl(240 5% 64.9%);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.group-modal-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.group-modal-close {
+  padding: 6px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: hsl(240 5% 64.9%);
+  transition: all 0.2s;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.group-modal-close:hover {
+  background: hsl(240 4.8% 95.9%);
+  color: hsl(240 10% 3.9%);
+}
+
+.group-modal-close-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+/* Details - предмет, тип экзамена, расписание */
+.group-modal-details {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Body */
+.group-modal-body {
+  padding: 16px;
+}
+
+/* Students */
+.group-modal-students-title {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(240 10% 3.9%);
+}
+
+.group-modal-students-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.group-modal-student-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  background: transparent;
+  border-radius: 6px;
+  transition: background-color 0.15s;
+  cursor: pointer;
+}
+
+.group-modal-student-item:hover {
+  background: hsl(240 4.8% 95.9%);
+}
+
+.group-modal-student-name {
+  font-size: 14px;
+  color: hsl(217 91% 60%);
+  transition: color 0.15s;
+}
+
+.group-modal-student-item:hover .group-modal-student-name {
+  color: hsl(217 91% 50%);
+}
+
+.group-modal-student-number {
+  font-size: 14px;
+  color: hsl(240 5% 64.9%);
+}
+
+.group-modal-no-students {
+  padding: 20px;
+  text-align: center;
+  color: hsl(240 5% 64.9%);
+  font-size: 14px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes zoomIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .group-modal-container {
+    max-width: calc(100% - 32px);
+    left: 16px;
+    right: 16px;
+    transform: translate(0, -50%);
+    width: auto;
+  }
+
+  .group-modal-header {
+    padding: 12px;
+  }
+
+  .group-modal-body {
+    padding: 12px;
+  }
+
+  .group-modal-title {
+    font-size: 16px;
+  }
+
+  .group-modal-meta-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .group-modal-details {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .group-modal-meta-item {
+    font-size: 13px;
+  }
+}

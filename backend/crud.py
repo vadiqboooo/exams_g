@@ -1,10 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from models import Student, Exam, StudyGroup, Employee, ExamType, Subject, WorkSession, Task, Report
+from models import Student, Exam, StudyGroup, Employee, ExamType, Subject, WorkSession, Task, Report, Lesson, LessonAttendance
 from schemas import StudentCreate, StudentUpdate, ExamCreate, ExamUpdate, GroupCreate, GroupUpdate, SubjectCreate, SubjectUpdate
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import secrets
 
@@ -13,6 +13,15 @@ import secrets
 def generate_access_token() -> str:
     """Генерирует уникальный токен для доступа к результатам студента"""
     return secrets.token_urlsafe(32)
+
+# ==================== EMPLOYEE CRUD ====================
+
+async def get_employee(db: AsyncSession, employee_id: int):
+    """Получить сотрудника по ID"""
+    result = await db.execute(
+        select(Employee).where(Employee.id == employee_id)
+    )
+    return result.scalar_one_or_none()
 
 # ==================== STUDENT CRUD ====================
 
@@ -624,10 +633,17 @@ async def create_task(db: AsyncSession, task_data: dict, created_by_id: int):
         except:
             pass
 
+    # Сериализуем linked_students в список dict
+    linked_students = task_data.get("linked_students")
+    if linked_students and not isinstance(linked_students[0], dict):
+        linked_students = [s.dict() if hasattr(s, 'dict') else s for s in linked_students]
+
     db_task = Task(
         title=task_data["title"],
         description=task_data.get("description"),
         deadline=deadline,
+        deadline_type=task_data.get("deadline_type"),
+        linked_students=linked_students or [],
         created_by_id=created_by_id,
         assigned_to_id=task_data["assigned_to_id"]
     )
@@ -637,8 +653,15 @@ async def create_task(db: AsyncSession, task_data: dict, created_by_id: int):
     return db_task
 
 
-async def get_tasks(db: AsyncSession, employee_id: Optional[int] = None, created_by_id: Optional[int] = None):
-    """Получить задачи"""
+async def get_tasks(db: AsyncSession, employee_id: Optional[int] = None, created_by_id: Optional[int] = None, report_date: Optional[str] = None):
+    """Получить задачи.
+    Если передан report_date (YYYY-MM-DD), возвращает:
+    - все незавершённые задачи
+    - завершённые задачи, у которых completed_at приходится на эту дату
+    """
+    from sqlalchemy import or_, func, cast
+    import sqlalchemy as sa
+
     query = select(Task).options(
         selectinload(Task.created_by),
         selectinload(Task.assigned_to)
@@ -649,6 +672,15 @@ async def get_tasks(db: AsyncSession, employee_id: Optional[int] = None, created
 
     if created_by_id is not None:
         query = query.where(Task.created_by_id == created_by_id)
+
+    if report_date is not None:
+        # Показываем незавершённые + завершённые в указанный день
+        query = query.where(
+            or_(
+                Task.status.notin_(['completed']),
+                func.date(Task.completed_at) == report_date
+            )
+        )
 
     query = query.order_by(Task.created_at.desc())
 
@@ -688,7 +720,20 @@ async def update_task(db: AsyncSession, task_id: int, task_update: dict):
             pass
 
     if "status" in task_update and task_update["status"] is not None:
-        db_task.status = task_update["status"]
+        new_status = task_update["status"]
+        if new_status == "completed":
+            # Ставим completed_at, если ещё не установлен
+            if db_task.completed_at is None:
+                db_task.completed_at = datetime.utcnow()
+        elif new_status == "postponed":
+            db_task.completed_at = None
+            # Автоматически переносим дедлайн на завтра
+            tomorrow = (datetime.utcnow() + timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
+            db_task.deadline = tomorrow
+            db_task.deadline_type = "tomorrow"
+        elif new_status != "completed":
+            db_task.completed_at = None
+        db_task.status = new_status
 
     if "assigned_to_id" in task_update and task_update["assigned_to_id"] is not None:
         db_task.assigned_to_id = task_update["assigned_to_id"]
@@ -702,15 +747,87 @@ async def update_task(db: AsyncSession, task_id: int, task_update: dict):
 
 # ==================== REPORT CRUD ====================
 
+async def start_report(db: AsyncSession, employee_id: int):
+    """Начать рабочий день — создаёт пустой отчёт или возвращает уже открытый"""
+    today = datetime.utcnow().date()
+    # Ищем уже открытый отчёт (без work_end_time) за сегодня
+    result = await db.execute(
+        select(Report).where(
+            Report.employee_id == employee_id,
+            Report.work_end_time == None  # noqa: E711
+        ).order_by(Report.created_at.desc())
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        return existing
+
+    db_report = Report(
+        employee_id=employee_id,
+        report_date=today,
+        work_start_time=datetime.utcnow(),
+        leads={},
+        money={},
+        content='',
+    )
+    db.add(db_report)
+    await db.commit()
+    await db.refresh(db_report)
+    return db_report
+
+
 async def create_report(db: AsyncSession, report_data: dict, employee_id: int):
     """Создать отчет"""
     # Парсим дату
     report_date = datetime.fromisoformat(report_data["report_date"])
 
+    # Подготавливаем данные о лидах и деньгах
+    leads_data = report_data.get("leads")
+    if leads_data:
+        leads_dict = leads_data if isinstance(leads_data, dict) else leads_data.dict()
+    else:
+        leads_dict = None
+
+    money_data = report_data.get("money")
+    if money_data:
+        money_dict = money_data if isinstance(money_data, dict) else money_data.dict()
+    else:
+        money_dict = None
+
+    # Парсим время начала/конца рабочего дня
+    work_start_time = None
+    if report_data.get("work_start_time"):
+        try:
+            work_start_time = datetime.fromisoformat(
+                report_data["work_start_time"].replace("Z", "+00:00")
+            )
+        except Exception:
+            pass
+
+    work_end_time = None
+    if report_data.get("work_end_time"):
+        try:
+            work_end_time = datetime.fromisoformat(
+                report_data["work_end_time"].replace("Z", "+00:00")
+            )
+        except Exception:
+            pass
+
     db_report = Report(
         employee_id=employee_id,
         report_date=report_date,
-        content=report_data["content"]
+        leads=leads_dict,
+        trial_scheduled=report_data.get("trial_scheduled", 0),
+        trial_attended=report_data.get("trial_attended", 0),
+        notified_tomorrow=report_data.get("notified_tomorrow", ""),
+        cancellations=report_data.get("cancellations", ""),
+        churn=report_data.get("churn", ""),
+        money=money_dict,
+        water=report_data.get("water", ""),
+        supplies_needed=report_data.get("supplies_needed", ""),
+        comments=report_data.get("comments", ""),
+        work_start_time=work_start_time,
+        work_end_time=work_end_time,
+        content=""  # Для совместимости со старой версией
     )
     db.add(db_report)
     await db.commit()
@@ -729,3 +846,399 @@ async def get_reports(db: AsyncSession, employee_id: Optional[int] = None):
 
     result = await db.execute(query)
     return result.scalars().all()
+
+
+async def update_report(db: AsyncSession, report_id: int, data: dict):
+    """Обновить отчет"""
+    result = await db.execute(select(Report).where(Report.id == report_id))
+    db_report = result.scalar_one_or_none()
+    if not db_report:
+        return None
+
+    if data.get("report_date"):
+        db_report.report_date = datetime.fromisoformat(data["report_date"])
+
+    if "leads" in data and data["leads"] is not None:
+        db_report.leads = data["leads"] if isinstance(data["leads"], dict) else data["leads"].dict()
+
+    if "money" in data and data["money"] is not None:
+        db_report.money = data["money"] if isinstance(data["money"], dict) else data["money"].dict()
+
+    for field in ["trial_scheduled", "trial_attended", "notified_tomorrow",
+                  "cancellations", "churn", "water", "supplies_needed", "comments"]:
+        if field in data and data[field] is not None:
+            setattr(db_report, field, data[field])
+
+    for time_field in ["work_start_time", "work_end_time"]:
+        if time_field in data and data[time_field] is not None:
+            try:
+                setattr(db_report, time_field,
+                        datetime.fromisoformat(data[time_field].replace("Z", "+00:00")))
+            except Exception:
+                pass
+
+    await db.commit()
+    await db.refresh(db_report)
+    return db_report
+
+
+async def delete_report(db: AsyncSession, report_id: int) -> bool:
+    """Удалить отчет"""
+    result = await db.execute(select(Report).where(Report.id == report_id))
+    db_report = result.scalar_one_or_none()
+    if not db_report:
+        return False
+    await db.delete(db_report)
+    await db.commit()
+    return True
+
+
+# ==================== LESSON CRUD ====================
+
+async def create_lesson(db: AsyncSession, lesson_data: dict, created_by_id: Optional[int] = None):
+    """Создать урок"""
+    lesson_date = datetime.fromisoformat(lesson_data["lesson_date"].replace("Z", "+00:00"))
+
+    db_lesson = Lesson(
+        group_id=lesson_data["group_id"],
+        lesson_date=lesson_date,
+        duration_minutes=lesson_data.get("duration_minutes", 90),
+        topic=lesson_data.get("topic"),
+        homework=lesson_data.get("homework"),
+        grading_mode=lesson_data.get("grading_mode", "numeric"),
+        total_tasks=lesson_data.get("total_tasks"),
+        homework_total_tasks=lesson_data.get("homework_total_tasks"),
+        auto_generated=lesson_data.get("auto_generated", False),
+        created_by_id=created_by_id
+    )
+    db.add(db_lesson)
+    await db.commit()
+    await db.refresh(db_lesson)
+    return db_lesson
+
+
+async def get_lessons_by_teacher(db: AsyncSession, teacher_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None):
+    """Получить уроки учителя за период"""
+    query = select(Lesson).join(StudyGroup).where(
+        StudyGroup.teacher_id == teacher_id,
+        Lesson.is_cancelled == False
+    ).options(
+        selectinload(Lesson.group),
+        selectinload(Lesson.attendances),
+        selectinload(Lesson.completed_by)
+    ).order_by(Lesson.lesson_date)
+
+    if start_date:
+        query = query.where(Lesson.lesson_date >= start_date)
+    if end_date:
+        query = query.where(Lesson.lesson_date <= end_date)
+
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+async def get_lessons_by_group(db: AsyncSession, group_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None):
+    """Получить уроки группы за период"""
+    query = select(Lesson).where(
+        Lesson.group_id == group_id
+    ).options(
+        selectinload(Lesson.group),
+        selectinload(Lesson.attendances),
+        selectinload(Lesson.completed_by)
+    ).order_by(Lesson.lesson_date)
+
+    if start_date:
+        query = query.where(Lesson.lesson_date >= start_date)
+    if end_date:
+        query = query.where(Lesson.lesson_date <= end_date)
+
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+async def get_lessons_by_school(db: AsyncSession, school: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None):
+    """Получить уроки школы за период (для администраторов школы)"""
+    query = select(Lesson).join(StudyGroup).where(
+        StudyGroup.school == school,
+        Lesson.is_cancelled == False
+    ).options(
+        selectinload(Lesson.group),
+        selectinload(Lesson.attendances),
+        selectinload(Lesson.completed_by)
+    ).order_by(Lesson.lesson_date)
+
+    if start_date:
+        query = query.where(Lesson.lesson_date >= start_date)
+    if end_date:
+        query = query.where(Lesson.lesson_date <= end_date)
+
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+async def get_all_lessons(db: AsyncSession, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None):
+    """Получить все уроки (для владельца)"""
+    query = select(Lesson).where(
+        Lesson.is_cancelled == False
+    ).options(
+        selectinload(Lesson.group),
+        selectinload(Lesson.attendances),
+        selectinload(Lesson.completed_by)
+    ).order_by(Lesson.lesson_date)
+
+    if start_date:
+        query = query.where(Lesson.lesson_date >= start_date)
+    if end_date:
+        query = query.where(Lesson.lesson_date <= end_date)
+
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+async def get_lesson(db: AsyncSession, lesson_id: int):
+    """Получить урок с полными данными"""
+    result = await db.execute(
+        select(Lesson)
+        .options(
+            selectinload(Lesson.group).selectinload(StudyGroup.students),
+            selectinload(Lesson.attendances).selectinload(LessonAttendance.student),
+            selectinload(Lesson.completed_by)
+        )
+        .where(Lesson.id == lesson_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_lesson(db: AsyncSession, lesson_id: int, lesson_data: dict):
+    """Обновить урок"""
+    result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
+    db_lesson = result.scalar_one_or_none()
+    if not db_lesson:
+        return None
+
+    if "lesson_date" in lesson_data:
+        db_lesson.lesson_date = datetime.fromisoformat(lesson_data["lesson_date"].replace("Z", "+00:00"))
+        db_lesson.auto_generated = False  # При ручном изменении даты снимаем флаг автогенерации
+
+    if "topic" in lesson_data:
+        db_lesson.topic = lesson_data["topic"]
+
+    if "homework" in lesson_data:
+        db_lesson.homework = lesson_data["homework"]
+
+    if "duration_minutes" in lesson_data:
+        db_lesson.duration_minutes = lesson_data["duration_minutes"]
+
+    if "grading_mode" in lesson_data:
+        db_lesson.grading_mode = lesson_data["grading_mode"]
+
+    if "total_tasks" in lesson_data:
+        db_lesson.total_tasks = lesson_data["total_tasks"]
+
+    if "homework_total_tasks" in lesson_data:
+        db_lesson.homework_total_tasks = lesson_data["homework_total_tasks"]
+
+    db_lesson.updated_at = datetime.now()
+
+    await db.commit()
+    await db.refresh(db_lesson)
+    return db_lesson
+
+
+async def cancel_lesson(db: AsyncSession, lesson_id: int, reason: Optional[str] = None):
+    """Отменить урок (мягкое удаление)"""
+    result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
+    db_lesson = result.scalar_one_or_none()
+    if not db_lesson:
+        return None
+
+    db_lesson.is_cancelled = True
+    db_lesson.cancellation_reason = reason
+    db_lesson.updated_at = datetime.now()
+
+    await db.commit()
+    await db.refresh(db_lesson)
+    return db_lesson
+
+
+async def delete_lesson(db: AsyncSession, lesson_id: int) -> bool:
+    """Удалить урок (жесткое удаление)"""
+    result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
+    db_lesson = result.scalar_one_or_none()
+    if not db_lesson:
+        return False
+
+    await db.delete(db_lesson)
+    await db.commit()
+    return True
+
+
+async def fill_lesson(db: AsyncSession, lesson_id: int, attendances_data: list, completed_by_id: Optional[int] = None):
+    """Заполнить посещаемость урока"""
+    # Получаем урок
+    result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
+    db_lesson = result.scalar_one_or_none()
+    if not db_lesson:
+        return None
+
+    # Удаляем старые записи посещаемости
+    await db.execute(
+        select(LessonAttendance).where(LessonAttendance.lesson_id == lesson_id)
+    )
+    result = await db.execute(
+        select(LessonAttendance).where(LessonAttendance.lesson_id == lesson_id)
+    )
+    existing_attendances = result.scalars().all()
+    for att in existing_attendances:
+        await db.delete(att)
+
+    # Создаем новые записи посещаемости
+    for att_data in attendances_data:
+        db_attendance = LessonAttendance(
+            lesson_id=lesson_id,
+            student_id=att_data["student_id"],
+            attendance_status=att_data.get("attendance_status", "present"),
+            grade_value=att_data.get("grade_value"),
+            homework_grade_value=att_data.get("homework_grade_value"),
+            comment=att_data.get("comment")
+        )
+        db.add(db_attendance)
+
+    # Отмечаем урок как заполненный
+    db_lesson.is_completed = True
+    db_lesson.completed_at = datetime.now()
+    db_lesson.completed_by_id = completed_by_id
+    db_lesson.updated_at = datetime.now()
+
+    await db.commit()
+    await db.refresh(db_lesson)
+
+    # Загружаем урок с посещаемостью
+    result = await db.execute(
+        select(Lesson)
+        .options(selectinload(Lesson.attendances))
+        .where(Lesson.id == lesson_id)
+    )
+    return result.scalar_one_or_none()
+
+
+# ==================== LESSON AUTO-GENERATION ====================
+
+# Маппинг дней недели
+WEEKDAY_MAP = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6
+}
+
+
+def parse_schedule_time(time_str: str):
+    """Парсит строку времени типа '10:00-12:00' и возвращает (start_hour, start_minute, duration_minutes)"""
+    if not time_str or '-' not in time_str:
+        return None, None, 90  # Дефолт 90 минут
+
+    try:
+        start_str, end_str = time_str.split('-')
+        start_parts = start_str.strip().split(':')
+        end_parts = end_str.strip().split(':')
+
+        start_hour = int(start_parts[0])
+        start_minute = int(start_parts[1]) if len(start_parts) > 1 else 0
+
+        end_hour = int(end_parts[0])
+        end_minute = int(end_parts[1]) if len(end_parts) > 1 else 0
+
+        # Вычисляем длительность в минутах
+        duration_minutes = (end_hour * 60 + end_minute) - (start_hour * 60 + start_minute)
+
+        return start_hour, start_minute, duration_minutes
+    except Exception:
+        return None, None, 90
+
+
+async def generate_lessons_for_group(db: AsyncSession, group_id: int, start_date: datetime, end_date: datetime):
+    """Генерирует уроки для группы на заданный период на основе расписания"""
+    # Получаем группу с расписанием
+    result = await db.execute(
+        select(StudyGroup).where(StudyGroup.id == group_id)
+    )
+    group = result.scalar_one_or_none()
+
+    if not group or not group.schedule:
+        return []
+
+    # Проверяем существующие уроки, чтобы не создавать дубликаты
+    result = await db.execute(
+        select(Lesson).where(
+            Lesson.group_id == group_id,
+            Lesson.lesson_date >= start_date,
+            Lesson.lesson_date <= end_date
+        )
+    )
+    existing_lessons = result.scalars().all()
+    existing_dates = {lesson.lesson_date.date() for lesson in existing_lessons}
+
+    created_lessons = []
+    current_date = start_date.date()
+    end_date_only = end_date.date()
+
+    # Итерируемся по дням в диапазоне
+    while current_date <= end_date_only:
+        weekday_name = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"][current_date.weekday()]
+
+        # Проверяем, есть ли урок в этот день недели
+        if weekday_name in group.schedule:
+            time_str = group.schedule[weekday_name]
+            start_hour, start_minute, duration = parse_schedule_time(time_str)
+
+            if start_hour is not None:
+                lesson_datetime = datetime.combine(current_date, datetime.min.time()).replace(
+                    hour=start_hour,
+                    minute=start_minute
+                )
+
+                # Проверяем, что нет урока в эту дату
+                if current_date not in existing_dates:
+                    db_lesson = Lesson(
+                        group_id=group_id,
+                        lesson_date=lesson_datetime,
+                        duration_minutes=duration,
+                        auto_generated=True
+                    )
+                    db.add(db_lesson)
+                    created_lessons.append(db_lesson)
+                    existing_dates.add(current_date)
+
+        current_date += timedelta(days=1)
+
+    await db.commit()
+    return created_lessons
+
+
+async def regenerate_lessons_for_updated_schedule(db: AsyncSession, group_id: int):
+    """Регенерирует уроки при изменении расписания группы"""
+    now = datetime.now()
+
+    # Удаляем только будущие автосозданные незаполненные уроки
+    result = await db.execute(
+        select(Lesson).where(
+            Lesson.group_id == group_id,
+            Lesson.lesson_date > now,
+            Lesson.auto_generated == True,
+            Lesson.is_completed == False
+        )
+    )
+    lessons_to_delete = result.scalars().all()
+
+    for lesson in lessons_to_delete:
+        await db.delete(lesson)
+
+    await db.commit()
+
+    # Генерируем новые уроки на 3 месяца вперед
+    end_date = now + timedelta(days=90)
+    return await generate_lessons_for_group(db, group_id, now, end_date)

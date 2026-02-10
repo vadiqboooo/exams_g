@@ -1,0 +1,61 @@
+.radio-group {
+  display: flex;
+  gap: 1rem;
+}
+
+.radio-group.flex {
+  display: flex;
+}
+
+.radio-group.gap-4 {
+  gap: 1rem;
+}
+
+.radio-group-item {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 100%;
+  border: 1px solid hsl(240 5.9% 90%);
+  cursor: pointer;
+  transition: all 0.2s;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: white;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.radio-group-item:focus {
+  outline: none;
+  border-color: hsl(240 10% 3.9%);
+  box-shadow: 0 0 0 2px hsl(240 10% 3.9% / 0.1);
+}
+
+.radio-group-item:checked {
+  border-color: hsl(240 10% 3.9%);
+  background-color: hsl(240 10% 3.9%);
+}
+
+.radio-group-item:checked::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 100%;
+  background-color: white;
+}
+
+.radio-group-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Flex container for radio item + label */
+.flex.items-center.space-x-2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

@@ -1,0 +1,81 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  outline: none;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.button:focus-visible {
+  outline: 2px solid hsl(240 10% 3.9%);
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* Variants */
+.button-default {
+  background-color: hsl(240 10% 3.9%);
+  color: hsl(0 0% 98%);
+}
+
+.button-default:hover {
+  background-color: hsl(240 10% 3.9% / 0.9);
+}
+
+.button-ghost {
+  background-color: transparent;
+  color: hsl(240 10% 3.9%);
+}
+
+.button-ghost:hover {
+  background-color: hsl(240 4.8% 95.9%);
+}
+
+.button-outline {
+  background-color: transparent;
+  border: 1px solid hsl(240 5.9% 90%);
+  color: hsl(240 10% 3.9%);
+}
+
+.button-outline:hover {
+  background-color: hsl(240 4.8% 95.9%);
+}
+
+/* Sizes */
+.button-default {
+  height: 2.5rem;
+  padding: 0.5rem 1rem;
+}
+
+.button-sm {
+  height: 2rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+/* Width utilities */
+.w-full {
+  width: 100%;
+}
+
+.h-8 {
+  height: 2rem;
+}
+
+.w-8 {
+  width: 2rem;
+}
+
+.p-0 {
+  padding: 0;
+}

@@ -32,6 +32,7 @@ class StudyGroup(Base):
     students = relationship("Student", secondary=group_student_association, back_populates="groups")
     teacher = relationship("Employee", back_populates="groups")
     exam_types = relationship("ExamType", back_populates="group")
+    lessons = relationship("Lesson", back_populates="group", cascade="all, delete-orphan")
 
 class Student(Base):
     __tablename__ = 'student'
@@ -204,11 +205,15 @@ class Task(Base):
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     deadline = Column(DateTime, nullable=True)
+    deadline_type = Column(String(20), nullable=True)  # urgent, today, tomorrow, custom
     status = Column(String(20), default='new')  # new, in_progress, completed
+    linked_students = Column(JSON, nullable=True)  # [{id, fio, phone}]
     created_by_id = Column(Integer, ForeignKey('employees.id'), nullable=False)
     assigned_to_id = Column(Integer, ForeignKey('employees.id'), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    completed_at = Column(DateTime, nullable=True)
 
     created_by = relationship("Employee", foreign_keys=[created_by_id])
     assigned_to = relationship("Employee", foreign_keys=[assigned_to_id])
@@ -221,7 +226,87 @@ class Report(Base):
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False)
     report_date = Column(DateTime, nullable=False)
-    content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    employee = relationship("Employee", back_populates="reports") 
+    # Структурированные данные в JSON
+    leads = Column(JSON, nullable=True)  # {calls: 0, social: 0, website: 0}
+    trial_scheduled = Column(Integer, default=0)
+    trial_attended = Column(Integer, default=0)
+    notified_tomorrow = Column(String(10), nullable=True)
+    cancellations = Column(Text, nullable=True)
+    churn = Column(Text, nullable=True)
+    money = Column(JSON, nullable=True)  # {cash: 0, mobile_bank: 0, non_cash: 0}
+    water = Column(String(200), nullable=True)
+    supplies_needed = Column(Text, nullable=True)
+    comments = Column(Text, nullable=True)
+
+    # Время рабочего дня
+    work_start_time = Column(DateTime, nullable=True)
+    work_end_time = Column(DateTime, nullable=True)
+
+    # Старое поле для обратной совместимости
+    content = Column(Text, nullable=True)
+
+    employee = relationship("Employee", back_populates="reports")
+
+
+class Lesson(Base):
+    """Уроки групп"""
+    __tablename__ = 'lessons'
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey('study_group.id'), nullable=False)
+
+    # Дата и время
+    lesson_date = Column(DateTime, nullable=False, index=True)
+    duration_minutes = Column(Integer, default=90)
+    topic = Column(String(200), nullable=True)
+    homework = Column(Text, nullable=True)
+
+    # Режим оценивания
+    grading_mode = Column(String(20), default='numeric')  # 'numeric' или 'tasks'
+    total_tasks = Column(Integer, nullable=True)  # Для режима tasks
+    homework_total_tasks = Column(Integer, nullable=True)
+
+    # Статусы
+    auto_generated = Column(Boolean, default=True)
+    is_cancelled = Column(Boolean, default=False)
+    cancellation_reason = Column(Text, nullable=True)
+    is_completed = Column(Boolean, default=False)
+    completed_at = Column(DateTime, nullable=True)
+    completed_by_id = Column(Integer, ForeignKey('employees.id'), nullable=True)  # Кто провел урок
+
+    # Метаданные
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by_id = Column(Integer, ForeignKey('employees.id'), nullable=True)
+
+    # Relationships
+    group = relationship("StudyGroup", back_populates="lessons")
+    attendances = relationship("LessonAttendance", back_populates="lesson", cascade="all, delete-orphan")
+    created_by = relationship("Employee", foreign_keys=[created_by_id])
+    completed_by = relationship("Employee", foreign_keys=[completed_by_id])
+
+
+class LessonAttendance(Base):
+    """Посещаемость студентов на уроках"""
+    __tablename__ = 'lesson_attendance'
+
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_id = Column(Integer, ForeignKey('lessons.id'), nullable=False)
+    student_id = Column(Integer, ForeignKey('student.id'), nullable=False)
+
+    # Статусы: present, trial, trial_absent, excused, absent
+    attendance_status = Column(String(20), nullable=False, default='present')
+
+    # Оценки (универсальное поле для числа или задач)
+    grade_value = Column(Integer, nullable=True)
+    homework_grade_value = Column(Integer, nullable=True)
+    comment = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    lesson = relationship("Lesson", back_populates="attendances")
+    student = relationship("Student") 
